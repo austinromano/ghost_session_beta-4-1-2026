@@ -25,6 +25,9 @@ Thumbs.db
 *.db-shm
 *.db-wal
 
+# Uploads
+apps/server/uploads/
+
 # JUCE builds
 JUCE/
 GhostSession/build/
