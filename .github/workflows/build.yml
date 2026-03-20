@@ -8,40 +8,44 @@ on:
 
 jobs:
   build-vst-mac:
-    runs-on: macos-latest
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
       - name: Install JUCE
-        run: |
-          git clone --depth 1 --branch 8.0.4 https://github.com/juce-framework/JUCE.git
+        run: git clone --depth 1 --branch 8.0.4 https://github.com/juce-framework/JUCE.git
+
+      - name: Install dependencies
+        run: brew install cmake
 
       - name: Configure CMake
         run: |
           cd apps/plugin
-          cmake -B build -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
-            2>&1 || true
+          cmake -B build -G "Unix Makefiles" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
 
-      - name: Build VST3
+      - name: Build all targets
         run: |
           cd apps/plugin
-          cmake --build build --config Release -- -j$(sysctl -n hw.ncpu) 2>&1 | tail -50
+          cmake --build build --config Release -j$(sysctl -n hw.ncpu)
 
-      - name: List build output
-        run: |
-          find apps/plugin/build/GhostSession_artefacts -type f -name "*.vst3" -o -name "*.component" -o -name "*.app" 2>/dev/null || echo "No artefacts found"
-          ls -laR apps/plugin/build/GhostSession_artefacts/ 2>/dev/null || echo "No artefacts dir"
+      - name: List all artefacts
+        run: find apps/plugin/build -name "*.vst3" -o -name "*.component" -o -name "*.app" | head -20
 
       - name: Package plugins
         run: |
           mkdir -p artifacts
-          cp -r apps/plugin/build/GhostSession_artefacts/Release/VST3/*.vst3 artifacts/ 2>/dev/null || true
-          cp -r apps/plugin/build/GhostSession_artefacts/VST3/*.vst3 artifacts/ 2>/dev/null || true
-          cp -r apps/plugin/build/GhostSession_artefacts/Release/AU/*.component artifacts/ 2>/dev/null || true
-          cp -r apps/plugin/build/GhostSession_artefacts/AU/*.component artifacts/ 2>/dev/null || true
-          ls -la artifacts/
+          # Find and copy the VST3 bundle (it's a directory on macOS)
+          find apps/plugin/build -name "Ghost Session.vst3" -type d | head -1 | while read dir; do
+            cp -r "$dir" artifacts/
+          done
+          # Find and copy AU if it exists
+          find apps/plugin/build -name "Ghost Session.component" -type d | head -1 | while read dir; do
+            cp -r "$dir" artifacts/
+          done
+          ls -laR artifacts/
 
       - name: Upload VST3 Plugin
         uses: actions/upload-artifact@v4
