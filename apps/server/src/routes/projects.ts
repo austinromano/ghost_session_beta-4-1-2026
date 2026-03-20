@@ -14,8 +14,8 @@ projectRoutes.use('*', authMiddleware);
 const createProjectSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional().default(''),
-  tempo: z.number().min(30).max(300).optional().default(140),
-  key: z.string().max(10).optional().default('C'),
+  tempo: z.number().min(0).max(300).optional().default(0),
+  key: z.string().max(10).optional().default(''),
   genre: z.string().max(50).optional().default(''),
   timeSignature: z.string().max(10).optional().default('4/4'),
 });

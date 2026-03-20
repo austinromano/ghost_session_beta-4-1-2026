@@ -59,11 +59,14 @@ public:
                              juce::Colour(0xFF1A1A2E),
                              DocumentWindow::allButtons)
         {
-            setContentOwned(proc.createEditor(), true);
             setResizable(true, true);
-            centreWithSize(getWidth(), getHeight());
             setUsingNativeTitleBar(true);
             setVisible(true);
+
+            // Add editor AFTER the native peer exists, so
+            // parentHierarchyChanged() sees a valid HWND
+            setContentOwned(proc.createEditor(), true);
+            centreWithSize(getWidth(), getHeight());
         }
 
         void closeButtonPressed() override

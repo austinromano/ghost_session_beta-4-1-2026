@@ -12,6 +12,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
   logout: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
   restore: () => void;
 }
 
@@ -52,6 +53,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     try { await api.logout(); } catch {}
+    disconnectSocket();
+    setToken(null);
+    localStorage.removeItem('ghost_token');
+    localStorage.removeItem('ghost_user');
+    set({ token: null, user: null, isAuthenticated: false });
+  },
+
+  deleteAccount: async () => {
+    await api.deleteAccount();
     disconnectSocket();
     setToken(null);
     localStorage.removeItem('ghost_token');

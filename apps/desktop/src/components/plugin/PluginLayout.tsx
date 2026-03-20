@@ -337,12 +337,13 @@ function CollaboratorPanel({ members, onInvite, isOwner, onRemove }: {
   );
 }
 
-function SettingsPopup({ user, onSignOut, onClose }: { user: any; onSignOut: () => void; onClose: () => void }) {
+function SettingsPopup({ user, onSignOut, onDeleteAccount, onClose }: { user: any; onSignOut: () => void; onDeleteAccount: () => void; onClose: () => void }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
   return (
     <div className="absolute right-2 top-12 w-56 bg-[#111214] rounded-lg shadow-popup animate-popup z-50 p-2 border border-white/5">
       <div className="p-2 mb-1">
         <div className="flex items-center gap-2.5">
-          <Avatar name={user?.displayName || '?'} size="md" colour="#5865F2" />
+          <Avatar name={user?.displayName || '?'} src={user?.avatarUrl} size="md" colour="#5865F2" />
           <div>
             <p className="text-sm font-semibold text-ghost-text-primary">{user?.displayName || 'Unknown'}</p>
             <p className="text-[12px] text-ghost-text-muted">{user?.email || ''}</p>
@@ -356,6 +357,23 @@ function SettingsPopup({ user, onSignOut, onClose }: { user: any; onSignOut: () 
       >
         Sign Out
       </button>
+      <div className="h-px bg-white/5 mx-1 my-1" />
+      {!confirmDelete ? (
+        <button
+          onClick={() => setConfirmDelete(true)}
+          className="w-full px-2 py-1.5 text-[13px] text-left rounded text-red-400 hover:bg-red-500/20 transition-colors"
+        >
+          Delete Account
+        </button>
+      ) : (
+        <div className="p-2 space-y-2">
+          <p className="text-[12px] text-red-400">Are you sure? This is permanent.</p>
+          <div className="flex gap-2">
+            <button onClick={onDeleteAccount} className="flex-1 px-2 py-1 text-[12px] rounded bg-red-500 text-white hover:bg-red-600 transition-colors">Yes, Delete</button>
+            <button onClick={() => setConfirmDelete(false)} className="flex-1 px-2 py-1 text-[12px] rounded bg-white/10 text-ghost-text-secondary hover:bg-white/15 transition-colors">Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -546,6 +564,8 @@ function Waveform({
     fileId ? rawDataCache.get(fileId) || null : null
   );
 
+  const [loadFailed, setLoadFailed] = useState(false);
+
   // Load raw audio data
   useEffect(() => {
     if (!fileId || !projectId) return;
@@ -553,9 +573,13 @@ function Waveform({
 
     let cancelled = false;
     const url = api.getDirectDownloadUrl(projectId, fileId);
+    const token = useAuthStore.getState().token;
 
-    fetch(url, { headers: { Authorization: `Bearer ${useAuthStore.getState().token}` } })
-      .then((r) => r.arrayBuffer())
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.arrayBuffer();
+      })
       .then((buf) => {
         const ctx = new AudioContext();
         return ctx.decodeAudioData(buf).finally(() => ctx.close());
@@ -566,14 +590,18 @@ function Waveform({
         rawDataCache.set(fileId, data);
         setRawData(data);
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error('[Waveform] Failed to load audio for fileId=' + fileId, err);
+        if (!cancelled) setLoadFailed(true);
+      });
 
     return () => { cancelled = true; };
   }, [fileId, projectId]);
 
-  // Generate fake audio-like data from seed
+  // Generate fake audio-like data from seed (also used as fallback when load fails)
   const fakeData = useMemo(() => {
-    if (rawData || (fileId && projectId)) return null;
+    if (rawData) return null;
+    if (fileId && projectId && !loadFailed) return null;
     let h = 0;
     for (let i = 0; i < seed.length; i++) h = ((h << 5) - h + seed.charCodeAt(i)) | 0;
     const len = 44100 * 4;
@@ -590,7 +618,7 @@ function Waveform({
       data[i] = noise * env * 0.9;
     }
     return data;
-  }, [seed, rawData, fileId, projectId]);
+  }, [seed, rawData, fileId, projectId, loadFailed]);
 
   const audioData = rawData || fakeData;
 
@@ -1188,18 +1216,14 @@ function SamplePackContentView({
         {/* Collaborators bar */}
         {(() => {
           const { user } = useAuthStore.getState();
-          const displayMembers = members.length > 0 ? members : user ? [{ userId: user.id, displayName: user.displayName, role: 'owner' }] : [];
+          const displayMembers = members.length > 0 ? members : user ? [{ userId: user.id, displayName: user.displayName, role: 'owner', avatarUrl: user.avatarUrl }] : [];
           return displayMembers.length > 0 && (
             <div className="mb-4">
               <div className="flex items-center gap-4 bg-ghost-surface/80 rounded-lg border border-ghost-border/30 px-5 py-3">
                 <div className="flex items-center -space-x-2.5">
                   {[...displayMembers].sort((a: any, b: any) => (a.role === 'owner' ? -1 : b.role === 'owner' ? 1 : 0)).map((m: any) => (
-                    <div key={m.userId} className="relative group cursor-pointer transition-transform hover:scale-110 hover:z-10" title={m.displayName}>
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold shadow-lg ${
-                        m.role === 'owner' ? 'bg-ghost-host-gold text-black' : 'bg-ghost-green text-black'
-                      }`} style={{ border: '3px solid #0F0F18' }}>
-                        {m.displayName?.charAt(0)?.toUpperCase() || '?'}
-                      </div>
+                    <div key={m.userId} className="relative group cursor-pointer transition-transform hover:scale-110 hover:z-10" title={m.displayName} style={{ border: '3px solid #0F0F18', borderRadius: '50%' }}>
+                      <Avatar name={m.displayName || '?'} src={m.avatarUrl} size="md" colour={m.role === 'owner' ? '#F0B232' : '#23A559'} />
                       <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-ghost-online-green" style={{ border: '2.5px solid #0F0F18' }} />
                     </div>
                   ))}
@@ -1577,7 +1601,7 @@ export default function PluginLayout() {
   };
 
   const handleCreate = async () => {
-    const p = await createProject({ name: 'New Project', tempo: 140, key: 'C' });
+    const p = await createProject({ name: 'New Project' });
     await fetchProjects();
     selectProject(p.id);
   };
@@ -1608,6 +1632,7 @@ export default function PluginLayout() {
 
   const handleRenamePack = async (id: string, name: string) => {
     setSamplePacks((prev) => prev.map((sp) => sp.id === id ? { ...sp, name } : sp));
+    setSelectedPack((prev) => prev && prev.id === id ? { ...prev, name } : prev);
     try { await api.updateSamplePack(id, { name }); } catch {}
   };
 
@@ -1791,15 +1816,12 @@ export default function PluginLayout() {
               </svg>
             </button>
 
-            {/* Settings gear */}
+            {/* Profile avatar / settings */}
             <button
               onClick={() => { setShowSettings(!showSettings); setShowNotifs(false); }}
-              className="text-ghost-text-secondary hover:text-ghost-purple transition-colors shrink-0"
+              className="shrink-0 rounded-full hover:ring-2 hover:ring-ghost-green/50 transition-all"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-              </svg>
+              <Avatar name={user?.displayName || '?'} src={user?.avatarUrl} size="sm" />
             </button>
           </div>
         </div>
@@ -1809,6 +1831,7 @@ export default function PluginLayout() {
           <SettingsPopup
             user={user}
             onSignOut={() => { setShowSettings(false); logout(); }}
+            onDeleteAccount={async () => { setShowSettings(false); await useAuthStore.getState().deleteAccount(); }}
             onClose={() => setShowSettings(false)}
           />
         )}
@@ -1862,10 +1885,57 @@ export default function PluginLayout() {
                       }}
                     />
                     <span className="text-[12px] text-ghost-text-muted uppercase tracking-wider font-semibold shrink-0">BPM</span>
-                    <span className="text-[14px] font-bold text-white shrink-0" style={{ fontFamily: "'Consolas', monospace" }}>{currentProject.tempo || 120}</span>
+                    {editingField === 'tempo' ? (
+                      <input
+                        autoFocus
+                        type="number"
+                        className="w-14 text-[14px] font-bold text-white bg-ghost-surface-hover px-1.5 py-0.5 rounded border border-ghost-green/50 outline-none shrink-0"
+                        style={{ fontFamily: "'Consolas', monospace" }}
+                        defaultValue={currentProject.tempo || ''}
+                        placeholder="___"
+                        onBlur={(e) => {
+                          const val = parseInt(e.target.value);
+                          if (!isNaN(val) && val > 0) updateProject(currentProject.id, { tempo: val });
+                          setEditingField(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                          if (e.key === 'Escape') setEditingField(null);
+                        }}
+                      />
+                    ) : (
+                      <span
+                        onClick={() => setEditingField('tempo')}
+                        className="text-[14px] font-bold text-white shrink-0 cursor-pointer hover:text-ghost-green transition-colors"
+                        style={{ fontFamily: "'Consolas', monospace" }}
+                      >{currentProject.tempo || '___'}</span>
+                    )}
                     <div className="w-px h-4 bg-ghost-border shrink-0" />
                     <span className="text-[12px] text-ghost-text-muted uppercase tracking-wider font-semibold shrink-0">Key</span>
-                    <span className="text-[14px] font-bold text-white shrink-0" style={{ fontFamily: "'Consolas', monospace" }}>{currentProject.key || 'C'}</span>
+                    {editingField === 'key' ? (
+                      <input
+                        autoFocus
+                        className="w-12 text-[14px] font-bold text-white bg-ghost-surface-hover px-1.5 py-0.5 rounded border border-ghost-green/50 outline-none shrink-0"
+                        style={{ fontFamily: "'Consolas', monospace" }}
+                        defaultValue={currentProject.key || ''}
+                        placeholder="_"
+                        onBlur={(e) => {
+                          const val = e.target.value.trim();
+                          if (val) updateProject(currentProject.id, { key: val });
+                          setEditingField(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                          if (e.key === 'Escape') setEditingField(null);
+                        }}
+                      />
+                    ) : (
+                      <span
+                        onClick={() => setEditingField('key')}
+                        className="text-[14px] font-bold text-white shrink-0 cursor-pointer hover:text-ghost-green transition-colors"
+                        style={{ fontFamily: "'Consolas', monospace" }}
+                      >{currentProject.key || '_'}</span>
+                    )}
                     {currentProject.updatedAt && (
                       <>
                         <div className="w-px h-4 bg-ghost-border shrink-0" />
@@ -1941,12 +2011,8 @@ export default function PluginLayout() {
                 <div className="flex items-center gap-4 bg-ghost-surface/80 rounded-lg border border-ghost-border/30 px-5 py-3">
                   <div className="flex items-center -space-x-2.5">
                     {[...members].sort((a: any, b: any) => (a.role === 'owner' ? -1 : b.role === 'owner' ? 1 : 0)).map((m: any) => (
-                      <div key={m.userId} className="relative group cursor-pointer transition-transform hover:scale-110 hover:z-10" title={m.displayName}>
-                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold shadow-lg ${
-                          m.role === 'owner' ? 'bg-ghost-host-gold text-black' : 'bg-ghost-green text-black'
-                        }`} style={{ border: '3px solid #0F0F18' }}>
-                          {m.displayName?.charAt(0)?.toUpperCase() || '?'}
-                        </div>
+                      <div key={m.userId} className="relative group cursor-pointer transition-transform hover:scale-110 hover:z-10" title={m.displayName} style={{ border: '3px solid #0F0F18', borderRadius: '50%' }}>
+                        <Avatar name={m.displayName || '?'} src={m.avatarUrl} size="md" colour={m.role === 'owner' ? '#F0B232' : '#23A559'} />
                         <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-ghost-online-green" style={{ border: '2.5px solid #0F0F18' }} />
                       </div>
                     ))}

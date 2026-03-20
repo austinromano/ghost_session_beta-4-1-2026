@@ -33,6 +33,19 @@ export const api = {
   register: (data: RegisterRequest) => request<AuthResponse>('POST', '/auth/register', data),
   logout: () => request<void>('POST', '/auth/logout'),
   me: () => request<User>('GET', '/auth/me'),
+  deleteAccount: () => request<void>('DELETE', '/auth/account'),
+  uploadAvatar: async (file: File): Promise<{ avatarUrl: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const headers: Record<string, string> = {};
+    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+    const res = await fetch(`${BASE_URL}/auth/avatar`, {
+      method: 'POST', headers, body: formData,
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Upload failed');
+    return json.data;
+  },
 
   // Projects
   listProjects: () => request<Project[]>('GET', '/projects'),

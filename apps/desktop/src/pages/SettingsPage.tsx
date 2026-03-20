@@ -8,12 +8,22 @@ export default function SettingsPage() {
   const [serverUrl, setServerUrl] = useState('http://localhost:3000');
   const [downloadDir, setDownloadDir] = useState('');
   const [volume, setVolume] = useState(80);
-  const { logout, user } = useAuthStore();
+  const { logout, deleteAccount, user } = useAuthStore();
   const navigate = useNavigate();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const handleLogout = async () => {
     await logout();
     navigate('/login');
+  };
+
+  const handleDeleteAccount = async () => {
+    try {
+      await deleteAccount();
+      navigate('/register');
+    } catch (err) {
+      console.error('Failed to delete account:', err);
+    }
   };
 
   return (
@@ -59,6 +69,24 @@ export default function SettingsPage() {
           </div>
         )}
         <Button variant="danger" onClick={handleLogout}>Sign Out</Button>
+      </div>
+
+      <div className="ghost-card p-5 space-y-4 border border-red-500/30">
+        <h2 className="text-sm font-semibold text-red-400 uppercase tracking-wider">Danger Zone</h2>
+        <p className="text-sm text-ghost-text-secondary">
+          Permanently delete your account and all associated data. This cannot be undone.
+        </p>
+        {!showDeleteConfirm ? (
+          <Button variant="danger" onClick={() => setShowDeleteConfirm(true)}>Delete Account</Button>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-red-400 font-semibold">Are you sure? This action is permanent.</p>
+            <div className="flex gap-3">
+              <Button variant="danger" onClick={handleDeleteAccount}>Yes, Delete My Account</Button>
+              <Button variant="secondary" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

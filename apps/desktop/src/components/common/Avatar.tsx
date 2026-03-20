@@ -24,9 +24,11 @@ export default function Avatar({ name, src, colour, size = 'md' }: AvatarProps) 
   const bg = colour || nameToColor(name);
 
   if (src) {
+    // If src is a relative API path, prepend the server URL
+    const imgSrc = src.startsWith('/') ? `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}${src}` : src;
     return (
       <img
-        src={src}
+        src={imgSrc}
         alt={name}
         className={`${sizeMap[size]} rounded-full object-cover shrink-0`}
       />
