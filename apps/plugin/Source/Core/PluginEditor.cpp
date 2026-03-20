@@ -56,9 +56,9 @@ void GhostSessionEditor::resized()
 
 juce::String GhostSessionEditor::getAppUrl() const
 {
-    // During development, point to the Vite dev server
-    // In production, this would point to the Ghost server serving static files
-    juce::String url = "http://127.0.0.1:1420";
+    // Production: point to the cloud server
+    // For local dev, change this to "http://127.0.0.1:1420" or "http://localhost:3000"
+    juce::String url = "https://ghostserver-production-5f6c.up.railway.app";
 
     // Pass auth token if available so the React app can auto-login
     auto token = proc.getClient().getAuthToken();
