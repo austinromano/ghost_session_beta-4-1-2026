@@ -338,11 +338,44 @@ function CollaboratorPanel({ members, onInvite, isOwner, onRemove }: {
 
 function SettingsPopup({ user, onSignOut, onDeleteAccount, onClose }: { user: any; onSignOut: () => void; onDeleteAccount: () => void; onClose: () => void }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    setUploading(true);
+    try {
+      const { avatarUrl } = await api.uploadAvatar(file);
+      const updated = { ...user, avatarUrl };
+      useAuthStore.setState({ user: updated });
+      localStorage.setItem('ghost_user', JSON.stringify(updated));
+    } catch {}
+    setUploading(false);
+  };
+
   return (
     <div className="absolute right-2 top-12 w-56 bg-[#111214] rounded-lg shadow-popup animate-popup z-50 p-2 border border-white/5">
       <div className="p-2 mb-1">
         <div className="flex items-center gap-2.5">
-          <Avatar name={user?.displayName || '?'} src={user?.avatarUrl} size="md" colour="#5865F2" />
+          <div className="relative cursor-pointer group" onClick={handleAvatarClick}>
+            <Avatar name={user?.displayName || '?'} src={user?.avatarUrl} size="lg" />
+            <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              {uploading ? (
+                <span className="text-[9px] text-white font-bold">...</span>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                  <circle cx="12" cy="13" r="4" />
+                </svg>
+              )}
+            </div>
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
+          </div>
           <div>
             <p className="text-sm font-semibold text-ghost-text-primary">{user?.displayName || 'Unknown'}</p>
             <p className="text-[12px] text-ghost-text-muted">{user?.email || ''}</p>
