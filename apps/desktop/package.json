@@ -11,9 +11,10 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@ghost/types": "workspace:*",
     "@ghost/protocol": "workspace:*",
     "@ghost/tokens": "workspace:*",
+    "@ghost/types": "workspace:*",
+    "framer-motion": "^12.38.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "socket.io-client": "^4.7.0",

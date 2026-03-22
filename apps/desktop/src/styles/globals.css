@@ -4,81 +4,77 @@
 
 @layer base {
   body {
-    @apply bg-ghost-surface-light text-ghost-text-primary font-sans antialiased;
+    @apply text-white font-sans antialiased;
     overflow: hidden;
     -webkit-font-smoothing: antialiased;
+    background: #0A0412;
+    background-image:
+      radial-gradient(ellipse at 15% 50%, rgba(120, 40, 200, 0.12) 0%, transparent 55%),
+      radial-gradient(ellipse at 85% 20%, rgba(0, 180, 216, 0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 95%, rgba(180, 60, 255, 0.06) 0%, transparent 50%);
   }
 
-  /* Discord-style thin scrollbars */
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-    border-radius: 4px;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: #1a1b1e;
-    border-radius: 4px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: #27282d;
-  }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
 
-  /* Selection */
-  ::selection {
-    @apply bg-ghost-purple/30 text-white;
-  }
+  ::selection { background: rgba(124,58,237,0.3); color: white; }
 }
 
 @keyframes playhead-pulse {
-  0%, 100% { opacity: 0.6; box-shadow: 0 0 4px rgba(0, 255, 200, 0.3); }
-  50% { opacity: 1; box-shadow: 0 0 8px rgba(0, 255, 200, 0.6); }
+  0%, 100% { opacity: 0.6; box-shadow: 0 0 4px rgba(0,255,200,0.3); }
+  50% { opacity: 1; box-shadow: 0 0 8px rgba(0,255,200,0.6); }
 }
+.playhead-pulse { animation: playhead-pulse 1.5s ease-in-out infinite; }
 
-.playhead-pulse {
-  animation: playhead-pulse 1.5s ease-in-out infinite;
-}
-
-/* Track volume slider */
 input[type="range"].track-volume {
-  -webkit-appearance: none;
-  appearance: none;
-  height: 4px;
-  background: #0A0A0F;
-  border-radius: 2px;
-  outline: none;
+  -webkit-appearance: none; appearance: none;
+  height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; outline: none;
 }
 input[type="range"].track-volume::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #F2F3F5;
-  cursor: pointer;
+  -webkit-appearance: none; appearance: none;
+  width: 10px; height: 10px; border-radius: 50%; background: #F2F3F5; cursor: pointer;
 }
-input[type="range"].track-volume::-webkit-slider-thumb:hover {
-  background: #00FFC8;
-}
+input[type="range"].track-volume::-webkit-slider-thumb:hover { background: #00FFC8; }
 
 @layer components {
-  .ghost-card {
-    @apply bg-ghost-surface rounded-lg;
+  .glass {
+    background: rgba(12, 8, 24, 0.65);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 16px;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.03),
+      0 8px 32px rgba(0,0,0,0.4),
+      inset 0 1px 0 rgba(255,255,255,0.04);
   }
+  .glass-subtle {
+    background: rgba(255,255,255,0.06);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .glass-glow {
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.05),
+      0 0 40px rgba(120,40,200,0.06),
+      0 8px 32px rgba(0,0,0,0.3);
+  }
+  .ghost-card { @apply glass-subtle; }
   .ghost-input {
-    @apply bg-ghost-bg border-none rounded-lg px-3 py-2.5
-           text-ghost-text-primary placeholder:text-ghost-text-muted text-sm
-           focus:outline-none focus:ring-2 focus:ring-ghost-purple/40
-           transition-colors;
+    @apply bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2.5
+           text-white placeholder:text-white/30 text-sm
+           focus:outline-none focus:ring-1 focus:ring-purple-500/30 focus:border-purple-500/20
+           transition-all;
   }
 }
 
 @keyframes fade-in-popup {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
-.animate-popup {
-  animation: fade-in-popup 150ms ease-out;
-}
+.animate-popup { animation: fade-in-popup 150ms ease-out; }

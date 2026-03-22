@@ -480,7 +480,7 @@ export default function ChatPanel() {
             </div>
           </div>
         )}
-        <div className="flex items-center bg-ghost-surface-hover/60 rounded-lg border border-ghost-border/30">
+        <div className="flex items-center bg-white/[0.04] rounded-lg border border-white/[0.08]">
           <input
             className="flex-1 min-w-0 bg-transparent text-[14px] text-ghost-text-primary placeholder:text-ghost-text-muted pl-3 py-2.5 pr-2 outline-none"
             value={text}
