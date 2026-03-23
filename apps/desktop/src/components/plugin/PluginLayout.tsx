@@ -1053,7 +1053,10 @@ function VideoGrid({ members, userId }: { members: any[]; userId?: string }) {
             )}
             {isMe && !cameraOn && (
               <div className="absolute inset-0 flex items-center justify-center pb-6">
-                <div className={`rounded-full transition-all duration-150 ${isSpeaking && micOn ? 'ring-[3px] ring-green-500 shadow-[0_0_12px_rgba(34,197,94,0.5)]' : ''}`}>
+                <div
+                  className={`rounded-full transition-all duration-150 shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] ${isSpeaking && micOn ? 'ring-[3px] ring-green-500 shadow-[0_0_12px_rgba(34,197,94,0.5)]' : 'shadow-[0_0_20px_rgba(124,58,237,0.3),0_2px_8px_rgba(0,0,0,0.3)]'}`}
+                  style={{ padding: '3px', background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)', borderRadius: '9999px' }}
+                >
                   <Avatar name={me!.displayName || '?'} src={me!.avatarUrl} size="xl" />
                 </div>
               </div>
@@ -1061,17 +1064,22 @@ function VideoGrid({ members, userId }: { members: any[]; userId?: string }) {
             {!isMe && (
               <div className="absolute inset-0 flex items-center justify-center">
                 {member ? (
-                  <Avatar name={member.displayName || '?'} src={member.avatarUrl} size="lg" />
+                  <div
+                    className="rounded-full shadow-[0_0_20px_rgba(124,58,237,0.3),0_2px_8px_rgba(0,0,0,0.3)]"
+                    style={{ padding: '3px', background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)', borderRadius: '9999px' }}
+                  >
+                    <Avatar name={member.displayName || '?'} src={member.avatarUrl} size="xl" />
+                  </div>
                 ) : (
                   <div className="flex flex-col items-center gap-2">
                     <motion.button
                       onClick={() => { const searchInput = document.querySelector('input[placeholder="Search"]') as HTMLInputElement; if (searchInput) { searchInput.focus(); searchInput.scrollIntoView(); } }}
-                      className="w-11 h-11 rounded-full text-white flex items-center justify-center transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)]"
+                      className="w-16 h-16 rounded-full text-white flex items-center justify-center transition-all shadow-[0_0_20px_rgba(124,58,237,0.3),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.5),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)]"
                       style={{ background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }}
                       whileHover={{ scale: 1.1 }}
                       whileTap={{ scale: 0.9 }}
                     >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="12" y1="5" x2="12" y2="19" />
                         <line x1="5" y1="12" x2="19" y2="12" />
                       </svg>
@@ -1184,9 +1192,9 @@ function FullMixDropZone({ projectId, onFilesAdded, isBeat }: { projectId: strin
         animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
         transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}
       />
-      <div className={`h-[95px] relative overflow-hidden rounded-xl transition-colors ${dragOver ? 'bg-ghost-green/[0.04]' : 'bg-[#0A0412]'}`}>
-        {/* Gloss overlay */}
-        <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 50%, rgba(0,0,0,0.1) 100%)' }} />
+      <div className={`h-[95px] relative overflow-hidden rounded-xl transition-colors backdrop-blur-md ${dragOver ? 'bg-white/[0.06]' : 'bg-white/[0.03]'}`} style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 12px rgba(0,0,0,0.2)' }}>
+        {/* Glass gloss overlay */}
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.07) 0%, transparent 40%, rgba(0,0,0,0.08) 100%)' }} />
         <div className="absolute inset-0 opacity-[0.15] pointer-events-none">
           <Waveform seed="fullmix-demo-placeholder" height={95} />
         </div>
@@ -1242,13 +1250,14 @@ function formatDate(dateStr?: string | null): string {
 }
 
 function StemRow({
-  name, type, onDelete, onRename, fileId, projectId, trackId, createdAt,
+  name, type, onDelete, onRename, fileId, projectId, trackId, createdAt, compact,
 }: {
   name: string; type: string;
   onDelete: () => void;
   onRename: (newName: string) => void;
   fileId?: string | null; projectId?: string; trackId: string;
   createdAt?: string | null;
+  compact?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(name);
@@ -1257,6 +1266,10 @@ function StemRow({
   const ctxRef = useRef<AudioContext | null>(null);
   const isMuted = useAudioStore((s) => s.loadedTracks.get(trackId)?.muted ?? false);
   const setTrackMuted = useAudioStore((s) => s.setTrackMuted);
+  const trackPitch = useAudioStore((s) => s.loadedTracks.get(trackId)?.pitch ?? 0);
+  const setTrackPitch = useAudioStore((s) => s.setTrackPitch);
+  const [showPitch, setShowPitch] = useState(false);
+  const pitchRef = useRef<HTMLDivElement>(null);
 
   const downloadUrl = fileId && projectId ? api.getDirectDownloadUrl(projectId, fileId) : null;
 
@@ -1338,18 +1351,29 @@ function StemRow({
   };
 
   return (
+    <div className="relative rounded-xl overflow-visible">
+      {/* AI rainbow border */}
+      <motion.div
+        className="absolute -inset-px rounded-xl opacity-40 pointer-events-none"
+        style={{
+          background: 'linear-gradient(90deg, #00FFC8, #7C3AED, #EC4899, #F59E0B, #00B4D8, #00FFC8)',
+          backgroundSize: '200% 100%',
+        }}
+        animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
+        transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}
+      />
     <div
       draggable={!!fileId}
       onDragStart={handleDragStart}
-      className={`group flex items-center rounded-xl overflow-hidden h-[95px] border border-white/[0.06] ${fileId ? 'cursor-grab active:cursor-grabbing' : ''}`}
+      className={`group relative flex items-center rounded-xl overflow-hidden ${compact ? 'h-[48px]' : 'h-[95px]'} ${fileId ? 'cursor-grab active:cursor-grabbing' : ''}`}
     >
       {/* Waveform full width with overlay controls */}
       <div className="flex-1 h-full overflow-hidden bg-[#0A0412] relative">
-        <Waveform seed={name + type} height={95} fileId={fileId} projectId={projectId} showPlayhead trackId={trackId} />
+        <Waveform seed={name + type} height={compact ? 48 : 95} fileId={fileId} projectId={projectId} showPlayhead trackId={trackId} />
         {/* Left gradient for text readability */}
         <div className="absolute inset-y-0 left-0 w-[45%] pointer-events-none" style={{ background: 'linear-gradient(90deg, rgba(10,4,18,0.85) 0%, rgba(10,4,18,0.4) 60%, transparent 100%)' }} />
         {/* Play + Mute buttons overlay */}
-        <div className="absolute left-4 top-1/2 -translate-y-1/2 z-10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5">
+        <div className={`absolute left-4 top-1/2 -translate-y-1/2 z-10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center ${compact ? 'gap-1' : 'gap-1.5'}`}>
           <motion.button
             onClick={handlePlay}
             className={`w-11 h-11 rounded-full flex items-center justify-center transition-all ${
@@ -1394,6 +1418,31 @@ function StemRow({
                 <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
               </svg>
             )}
+          </motion.button>
+          {/* Pitch up/down */}
+          <motion.button
+            onClick={() => setTrackPitch(trackId, trackPitch + 1)}
+            className="w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)]"
+            style={{ background: trackPitch > 0 ? 'linear-gradient(180deg, #059669 0%, #065F46 100%)' : 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            title={`Pitch up (${trackPitch > 0 ? '+' : ''}${trackPitch} st)`}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="18 15 12 9 6 15" />
+            </svg>
+          </motion.button>
+          <motion.button
+            onClick={() => setTrackPitch(trackId, trackPitch - 1)}
+            className="w-11 h-11 rounded-full flex items-center justify-center transition-all shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.2)]"
+            style={{ background: trackPitch < 0 ? 'linear-gradient(180deg, #059669 0%, #065F46 100%)' : 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            title={`Pitch down (${trackPitch > 0 ? '+' : ''}${trackPitch} st)`}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
           </motion.button>
         </div>
         {/* Name overlay */}
@@ -1475,6 +1524,7 @@ function StemRow({
         </div>
       </div>
     </div>
+    </div>
   );
 }
 
@@ -1503,8 +1553,8 @@ function detectBpmFromName(name: string): number {
   return 0;
 }
 
-function TransportBar({ tracks, projectId, projectTempo, onTempoChange }: { tracks?: any[]; projectId?: string; projectTempo?: number; onTempoChange?: (bpm: number) => void }) {
-  const { isPlaying, currentTime, duration, loadedTracks, projectBpm, play, pause, stop, seekTo, loadTrack, setProjectBpm } = useAudioStore();
+function TransportBar({ tracks, projectId, projectTempo, onTempoChange, trackZoom, onZoomChange }: { tracks?: any[]; projectId?: string; projectTempo?: number; onTempoChange?: (bpm: number) => void; trackZoom?: 'full' | 'half'; onZoomChange?: (zoom: 'full' | 'half') => void }) {
+  const { isPlaying, currentTime, duration, loadedTracks, projectBpm, play, pause, stop, seekTo, loadTrack, loadTrackFromBuffer, setProjectBpm } = useAudioStore();
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -1528,7 +1578,8 @@ function TransportBar({ tracks, projectId, projectTempo, onTempoChange }: { trac
           loadedRef.current.add(track.id);
           const trackName = track.name || track.fileName || '';
           const detectedBpm = detectBpmFromName(trackName);
-          loadTrack(track.id, track.fileId, projectId, detectedBpm);
+          const buffer = audioBufferCache.get(track.fileId)!;
+          loadTrackFromBuffer(track.id, buffer, detectedBpm);
         }
       }
     };
@@ -1566,9 +1617,9 @@ function TransportBar({ tracks, projectId, projectTempo, onTempoChange }: { trac
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="shrink-0 bg-black/40 backdrop-blur-md rounded-xl border border-white/[0.06] mt-3">
+    <div className="shrink-0 h-[95px] bg-[#0A0412] rounded-xl border border-white/20 flex flex-col justify-center">
       {/* Controls row */}
-      <div className="flex items-center justify-center gap-5 py-2">
+      <div className="flex items-center justify-center gap-5 py-1.5">
         {/* Shuffle */}
         <button
           onClick={() => setShuffle(!shuffle)}
@@ -1675,10 +1726,32 @@ function TransportBar({ tracks, projectId, projectTempo, onTempoChange }: { trac
             <span className="text-[9px] text-white/30 uppercase tracking-wider ml-0.5">BPM</span>
           </div>
         )}
+
+        {/* Track zoom controls */}
+        <div className="flex items-center gap-1 ml-3 pl-3 border-l border-white/10">
+          <button
+            onClick={() => onZoomChange?.('half')}
+            className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${trackZoom === 'half' ? 'text-ghost-green bg-ghost-green/10' : 'text-white/40 hover:text-white/70'}`}
+            title="Compact view"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="8" y1="11" x2="14" y2="11" />
+            </svg>
+          </button>
+          <button
+            onClick={() => onZoomChange?.('full')}
+            className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${trackZoom === 'full' ? 'text-ghost-green bg-ghost-green/10' : 'text-white/40 hover:text-white/70'}`}
+            title="Full view"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="11" y1="8" x2="11" y2="14" /><line x1="8" y1="11" x2="14" y2="11" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Seek bar row */}
-      <div className="flex items-center gap-3 px-4 pb-2">
+      <div className="flex items-center gap-3 px-4 pb-1">
         <span className="text-[11px] font-mono text-white/40 w-10 text-right">{formatTime(currentTime)}</span>
         <div
           ref={seekBarRef}
@@ -2593,6 +2666,7 @@ export default function PluginLayout() {
     } catch {}
   };
   const [showSettings, setShowSettings] = useState(false);
+  const [trackZoom, setTrackZoom] = useState<'full' | 'half'>('full');
   const [showNotifs, setShowNotifs] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [showFriendSearch, setShowFriendSearch] = useState(false);
@@ -3059,6 +3133,7 @@ export default function PluginLayout() {
           {selectedProjectId && currentProject ? (
             <>
               <div className="flex-1 flex flex-col min-w-0 glass glass-glow rounded-2xl overflow-hidden">
+              <div className="flex-1 flex flex-col min-h-0">
               <div className="flex-1 overflow-y-auto p-4">
                 {shareStatus && <div className="mb-3 px-4 py-2 rounded-lg bg-purple-500/20 border border-purple-500/30 text-[13px] text-purple-300 font-medium text-center">{shareStatus}</div>}
 
@@ -3285,18 +3360,16 @@ export default function PluginLayout() {
                       createdAt={track.createdAt}
                       onDelete={() => deleteTrack(selectedProjectId!, track.id)}
                       onRename={(newName) => updateTrack(selectedProjectId!, track.id, { name: newName })}
+                      compact={trackZoom === 'half'}
                     />
                   ))}
-                  {/* Extra empty drop zones to fill 4 total slots */}
-                  {Array.from({ length: Math.max(0, 3 - currentProject.tracks.length) }).map((_, i) => (
-                    <div key={`drop-${i}`}>
-                      <FullMixDropZone projectId={selectedProjectId!} onFilesAdded={() => fetchProject(selectedProjectId!)} isBeat={isBeatView} />
-                    </div>
-                  ))}
                 </div>
-                <TransportBar tracks={currentProject.tracks} projectId={selectedProjectId!} projectTempo={currentProject.tempo} onTempoChange={(bpm) => updateProject(selectedProjectId!, { tempo: bpm })} />
               </div>
-
+              </div>
+              {/* Transport bar — fixed at bottom, outside scroll */}
+              <div className="shrink-0 px-4 pb-3">
+                <TransportBar tracks={currentProject.tracks} projectId={selectedProjectId!} projectTempo={currentProject.tempo} onTempoChange={(bpm) => updateProject(selectedProjectId!, { tempo: bpm })} trackZoom={trackZoom} onZoomChange={setTrackZoom} />
+              </div>
               </div>
 
               {/* Right panel: chat */}
