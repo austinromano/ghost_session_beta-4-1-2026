@@ -404,7 +404,7 @@ export default function ChatPanel() {
       {/* Chat messages — newest at top, Discord-style spacing */}
       <div className="flex-1 overflow-y-auto px-4 pt-2 pb-2">
         {chatMessages.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12 gap-2 text-center">
+          <div className="flex flex-col items-center justify-center py-5 gap-2 text-center">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-ghost-text-muted/30">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>

@@ -1242,7 +1242,6 @@ function VideoGrid({ members, userId }: { members: any[]; userId?: string }) {
                   </motion.button>
               </div>
             )}
-            {isMe && <span className="absolute bottom-1.5 left-2 w-2 h-2 rounded-full bg-ghost-online-green" />}
           </div>
         );
       })}
@@ -1744,7 +1743,7 @@ function TransportBar({ tracks, projectId, projectTempo, onTempoChange, trackZoo
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="shrink-0 h-[95px] bg-[#0A0412] rounded-xl border border-white/20 flex flex-col justify-center">
+    <div className="shrink-0 h-[95px] glass glass-glow rounded-xl flex flex-col justify-center">
       {/* Controls row */}
       <div className="flex items-center justify-center py-1.5 relative">
         <div className="flex items-center gap-4">
@@ -3577,28 +3576,6 @@ export default function PluginLayout() {
                     <VideoGrid members={members} userId={user?.id} />
                   </div>
                   <div className="w-[300px] flex flex-col min-h-0 flex-1 overflow-hidden glass glass-glow rounded-2xl">
-                    <div className="px-3 py-3 border-b border-white/[0.06] shrink-0">
-                      {(() => {
-                        const displayFriends = friends.length > 0 ? friends : [
-                          { id: 'demo1', displayName: 'Alex Beats', avatarUrl: 'https://randomuser.me/api/portraits/men/32.jpg' },
-                          { id: 'demo2', displayName: 'Jay Producer', avatarUrl: 'https://randomuser.me/api/portraits/men/75.jpg' },
-                          { id: 'demo3', displayName: 'Kira Wave', avatarUrl: 'https://randomuser.me/api/portraits/women/44.jpg' },
-                          { id: 'demo4', displayName: 'Rio Sound', avatarUrl: 'https://randomuser.me/api/portraits/men/85.jpg' },
-                        ];
-                        return (
-                          <div className="flex items-center justify-evenly w-full">
-                            {displayFriends.map((f) => (
-                              <div key={f.id} className="relative group cursor-pointer hover:scale-110 transition-transform" title={f.displayName}>
-                                <div className="w-10 h-10 rounded-full ring-2 ring-white/[0.08] group-hover:ring-ghost-green/40 transition-all overflow-hidden">
-                                  <Avatar name={f.displayName} src={f.avatarUrl} size="md" />
-                                </div>
-                                <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-ghost-online-green border-2 border-[#0A0412]" />
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })()}
-                    </div>
                     <ChatPanel />
                   </div>
                   </>
@@ -3634,28 +3611,6 @@ export default function PluginLayout() {
                     <VideoGrid members={members} userId={user?.id} />
                   </div>
                   <div className="w-[300px] flex flex-col min-h-0 flex-1 overflow-hidden glass glass-glow rounded-2xl">
-                    <div className="px-3 py-3 border-b border-white/[0.06] shrink-0">
-                      {(() => {
-                        const displayFriends = friends.length > 0 ? friends : [
-                          { id: 'demo1', displayName: 'Alex Beats', avatarUrl: 'https://randomuser.me/api/portraits/men/32.jpg' },
-                          { id: 'demo2', displayName: 'Jay Producer', avatarUrl: 'https://randomuser.me/api/portraits/men/75.jpg' },
-                          { id: 'demo3', displayName: 'Kira Wave', avatarUrl: 'https://randomuser.me/api/portraits/women/44.jpg' },
-                          { id: 'demo4', displayName: 'Rio Sound', avatarUrl: 'https://randomuser.me/api/portraits/men/85.jpg' },
-                        ];
-                        return (
-                          <div className="flex items-center justify-evenly w-full">
-                            {displayFriends.map((f) => (
-                              <div key={f.id} className="relative group cursor-pointer hover:scale-110 transition-transform" title={f.displayName}>
-                                <div className="w-10 h-10 rounded-full ring-2 ring-white/[0.08] group-hover:ring-ghost-green/40 transition-all overflow-hidden">
-                                  <Avatar name={f.displayName} src={f.avatarUrl} size="md" />
-                                </div>
-                                <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-ghost-online-green border-2 border-[#0A0412]" />
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })()}
-                    </div>
                     <ChatPanel />
                   </div>
                   </>
