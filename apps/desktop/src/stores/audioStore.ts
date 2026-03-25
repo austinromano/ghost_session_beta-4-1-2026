@@ -58,6 +58,11 @@ interface AudioState {
 
 let audioCtx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
+let analyserNode: AnalyserNode | null = null;
+
+export function getAnalyser(): AnalyserNode | null {
+  return analyserNode;
+}
 let startedAt = 0;
 let pausedAt = 0;
 let rafId: number | null = null;
@@ -73,7 +78,11 @@ function getCtx() {
   if (!audioCtx) {
     audioCtx = new AudioContext();
     masterGain = audioCtx.createGain();
-    masterGain.connect(audioCtx.destination);
+    analyserNode = audioCtx.createAnalyser();
+    analyserNode.fftSize = 256;
+    analyserNode.smoothingTimeConstant = 0.8;
+    masterGain.connect(analyserNode);
+    analyserNode.connect(audioCtx.destination);
   }
   return audioCtx;
 }

@@ -2,10 +2,11 @@ interface AvatarProps {
   name: string;
   src?: string | null;
   colour?: string;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 }
 
 const sizeMap = {
+  xs: 'w-6 h-6 text-[9px]',
   sm: 'w-8 h-8 text-[11px]',
   md: 'w-9 h-9 text-[12px]',
   lg: 'w-11 h-11 text-sm',

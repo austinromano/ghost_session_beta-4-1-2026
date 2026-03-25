@@ -8,7 +8,7 @@ import { onGlobalOnlineUsers, type OnlineUser } from '../../lib/socket';
 import Avatar from '../common/Avatar';
 import ChatPanel from '../session/ChatPanel';
 import { useSessionStore } from '../../stores/sessionStore';
-import { useAudioStore } from '../../stores/audioStore';
+import { useAudioStore, getAnalyser } from '../../stores/audioStore';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
 const SERVER_BASE = API_BASE.replace('/api/v1', '');
@@ -1688,6 +1688,160 @@ function detectBpmFromName(name: string): number {
   return 0;
 }
 
+function FrequencyBar({ seekBarRef, progress, isPlaying, onSeekClick, onSeekDrag, onSeekEnd, children }: {
+  seekBarRef: React.RefObject<HTMLDivElement>;
+  progress: number;
+  isPlaying: boolean;
+  onSeekClick: (e: React.MouseEvent<HTMLDivElement>) => void;
+  onSeekDrag: (e: React.MouseEvent<HTMLDivElement>) => void;
+  onSeekEnd: () => void;
+  children?: React.ReactNode;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animRef = useRef<number>(0);
+  const prevData = useRef<Float32Array | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let running = true;
+    const BAR_COUNT = 128;
+    if (!prevData.current) prevData.current = new Float32Array(BAR_COUNT);
+
+    const draw = () => {
+      if (!running) return;
+      const w = canvas.offsetWidth;
+      const h = canvas.offsetHeight;
+      const dpr = window.devicePixelRatio || 2;
+      if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+
+      const midY = h / 2;
+      const analyser = getAnalyser();
+      const smoothed = prevData.current!;
+
+      if (analyser && isPlaying) {
+        const bufLen = analyser.frequencyBinCount;
+        const raw = new Uint8Array(bufLen);
+        analyser.getByteFrequencyData(raw);
+
+        for (let i = 0; i < BAR_COUNT; i++) {
+          const idx = Math.floor(i * bufLen / BAR_COUNT);
+          const target = raw[idx] / 255;
+          // Smooth rise fast, fall slow
+          smoothed[i] += (target - smoothed[i]) * (target > smoothed[i] ? 0.4 : 0.08);
+        }
+      } else {
+        // Fade out when not playing
+        for (let i = 0; i < BAR_COUNT; i++) {
+          smoothed[i] *= 0.92;
+        }
+      }
+
+      const HALF = BAR_COUNT / 2;
+      const gap = 1;
+      const barW = Math.max(1, (w - gap * BAR_COUNT) / BAR_COUNT);
+      const midX = w / 2;
+
+      for (let i = 0; i < BAR_COUNT; i++) {
+        // Mirror: high freq in center, low freq on edges
+        const freqIdx = i < HALF ? i : (BAR_COUNT - 1 - i);
+        const val = smoothed[freqIdx];
+        const barH = val * midY * 0.9;
+        const x = i * (barW + gap);
+
+        // Color based on distance from center (low freq = center = cyan, high freq = edges = pink)
+        const ratio = freqIdx / HALF;
+        let r: number, g: number, b: number;
+        if (ratio < 0.33) {
+          const t = ratio / 0.33;
+          r = Math.round(0 + 124 * t);
+          g = Math.round(255 - 197 * t);
+          b = Math.round(200 + 37 * t);
+        } else if (ratio < 0.66) {
+          const t = (ratio - 0.33) / 0.33;
+          r = Math.round(124 + 112 * t);
+          g = Math.round(58 - 18 * t);
+          b = Math.round(237 - 80 * t);
+        } else {
+          const t = (ratio - 0.66) / 0.34;
+          r = Math.round(236 + 19 * t);
+          g = Math.round(40 + 26 * t);
+          b = Math.round(157 + 98 * t);
+        }
+
+        const alpha = 0.5 + val * 0.5;
+
+        // Top half (mirrored upward)
+        const grad = ctx.createLinearGradient(x, midY, x, midY - barH);
+        grad.addColorStop(0, `rgba(${r},${g},${b},${alpha * 0.2})`);
+        grad.addColorStop(0.5, `rgba(${r},${g},${b},${alpha})`);
+        grad.addColorStop(1, `rgba(${r},${g},${b},${alpha * 0.8})`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.roundRect(x, midY - barH, barW, barH, [2, 2, 0, 0]);
+        ctx.fill();
+
+        // Bottom half (mirrored downward, dimmer)
+        const grad2 = ctx.createLinearGradient(x, midY, x, midY + barH);
+        grad2.addColorStop(0, `rgba(${r},${g},${b},${alpha * 0.15})`);
+        grad2.addColorStop(1, `rgba(${r},${g},${b},0)`);
+        ctx.fillStyle = grad2;
+        ctx.beginPath();
+        ctx.roundRect(x, midY, barW, barH * 0.6, [0, 0, 2, 2]);
+        ctx.fill();
+
+        // Glow on peaks
+        if (val > 0.7) {
+          ctx.shadowColor = `rgba(${r},${g},${b},${(val - 0.7) * 2})`;
+          ctx.shadowBlur = 8;
+          ctx.fillStyle = `rgba(${r},${g},${b},${(val - 0.7) * 0.6})`;
+          ctx.fillRect(x, midY - barH, barW, 2);
+          ctx.shadowBlur = 0;
+        }
+      }
+
+      // Center line
+      ctx.fillStyle = 'rgba(255,255,255,0.04)';
+      ctx.fillRect(0, midY - 0.5, w, 1);
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      animRef.current = requestAnimationFrame(draw);
+    };
+
+    animRef.current = requestAnimationFrame(draw);
+    return () => { running = false; cancelAnimationFrame(animRef.current); };
+  }, [isPlaying, progress]);
+
+  return (
+    <div
+      ref={seekBarRef}
+      className="w-full h-16 cursor-pointer relative group"
+      style={{ background: 'rgba(6,2,14,0.95)', borderTop: '1px solid rgba(255,255,255,0.06)' }}
+      onMouseDown={onSeekClick}
+      onMouseMove={onSeekDrag}
+      onMouseUp={onSeekEnd}
+      onMouseLeave={onSeekEnd}
+    >
+      {/* Frequency canvas */}
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none z-[1]" />
+      {/* Progress dim overlay */}
+      <div className="absolute inset-y-0 left-0 pointer-events-none z-[2]" style={{ width: `${progress}%`, background: 'linear-gradient(90deg, rgba(0,255,200,0.03), rgba(124,58,237,0.06))' }} />
+      {/* Playhead */}
+      <div className="absolute top-0 bottom-0 w-0.5 pointer-events-none z-[3]" style={{ left: `${progress}%`, background: 'rgba(255,255,255,0.9)', boxShadow: '0 0 8px rgba(0,255,200,0.5), 0 0 2px rgba(255,255,255,0.8)' }} />
+      {/* Transport controls — solid, on top of everything */}
+      <div className="absolute inset-0 z-[4]">{children}</div>
+    </div>
+  );
+}
+
 function TransportBar({ tracks, projectId, projectTempo, onTempoChange, trackZoom, onZoomChange }: { tracks?: any[]; projectId?: string; projectTempo?: number; onTempoChange?: (bpm: number) => void; trackZoom?: 'full' | 'half'; onZoomChange?: (zoom: 'full' | 'half') => void }) {
   const { isPlaying, currentTime, duration, loadedTracks, projectBpm, canUndo, canRedo, play, pause, stop, seekTo, loadTrack, loadTrackFromBuffer, setProjectBpm } = useAudioStore();
   const currentProject = useProjectStore((s) => s.currentProject);
@@ -1753,60 +1907,91 @@ function TransportBar({ tracks, projectId, projectTempo, onTempoChange, trackZoo
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="shrink-0 h-11 flex items-center justify-between px-3 glass-subtle rounded-lg" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-      {/* Left: undo/redo + time */}
-      <div className="flex items-center gap-1 w-24 shrink-0">
-        <button onClick={() => {
-          const state = useAudioStore.getState();
-          if (!state.canUndo) return;
-          state.undo();
-          state.loadedTracks.forEach((t, id) => {
-            const fileId = currentProject?.tracks?.find((tr: any) => tr.id === id)?.fileId;
-            if (fileId) { audioBufferCache.set(fileId, t.buffer); rawDataCache.delete(fileId); }
-          });
-        }} className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${canUndo ? 'text-white/60 hover:text-white hover:bg-white/[0.06]' : 'text-white/15 cursor-not-allowed'}`} title="Undo">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
-        </button>
-        <button onClick={() => {
-          const state = useAudioStore.getState();
-          if (!state.canRedo) return;
-          state.redo();
-          state.loadedTracks.forEach((t, id) => {
-            const fileId = currentProject?.tracks?.find((tr: any) => tr.id === id)?.fileId;
-            if (fileId) { audioBufferCache.set(fileId, t.buffer); rawDataCache.delete(fileId); }
-          });
-        }} className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${canRedo ? 'text-white/60 hover:text-white hover:bg-white/[0.06]' : 'text-white/15 cursor-not-allowed'}`} title="Redo">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10" /></svg>
-        </button>
-        <span className="text-[10px] font-mono text-white/40 ml-1">{formatTime(currentTime)}</span>
+    <div className="shrink-0 flex flex-col w-full" style={{ background: 'rgba(10,4,18,0.97)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+      {/* Bar ruler */}
+      <div className="h-6 w-full flex items-stretch overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        {Array.from({ length: 16 }, (_, bar) => (
+          <div key={bar} className="flex-1 flex items-start relative" style={{ borderLeft: '1px solid rgba(255,255,255,0.12)' }}>
+            <span className="text-[10px] font-mono text-white/30 ml-1 mt-0.5 select-none">{bar + 1}</span>
+            {/* Sub-beat ticks */}
+            <div className="absolute bottom-0 left-1/4 w-px h-2" style={{ background: 'rgba(255,255,255,0.06)' }} />
+            <div className="absolute bottom-0 left-1/2 w-px h-3" style={{ background: 'rgba(255,255,255,0.08)' }} />
+            <div className="absolute bottom-0 left-3/4 w-px h-2" style={{ background: 'rgba(255,255,255,0.06)' }} />
+          </div>
+        ))}
       </div>
+      {/* controls are now overlaid on the FrequencyBar below */}
+      {/* Full-width frequency visualizer with transport controls overlaid */}
+      <FrequencyBar
+        seekBarRef={seekBarRef}
+        progress={progress}
+        isPlaying={isPlaying}
+        onSeekClick={handleSeekClick}
+        onSeekDrag={handleSeekDrag}
+        onSeekEnd={() => setDragging(false)}
+      >
+        {/* Transport controls overlaid on visualizer */}
+        <div className="absolute inset-0 flex items-center z-10 pointer-events-none">
+          {/* Left: undo/redo + time */}
+          <div className="absolute left-3 flex items-center gap-1 pointer-events-auto" style={{ filter: 'drop-shadow(0 0 3px rgba(0,0,0,0.8))' }}>
+            <button onClick={() => {
+              const state = useAudioStore.getState();
+              if (!state.canUndo) return;
+              state.undo();
+              state.loadedTracks.forEach((t, id) => {
+                const fileId = currentProject?.tracks?.find((tr: any) => tr.id === id)?.fileId;
+                if (fileId) { audioBufferCache.set(fileId, t.buffer); rawDataCache.delete(fileId); }
+              });
+            }} className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${canUndo ? 'text-white/60 hover:text-white' : 'text-white/15 cursor-not-allowed'}`} title="Undo">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
+            </button>
+            <button onClick={() => {
+              const state = useAudioStore.getState();
+              if (!state.canRedo) return;
+              state.redo();
+              state.loadedTracks.forEach((t, id) => {
+                const fileId = currentProject?.tracks?.find((tr: any) => tr.id === id)?.fileId;
+                if (fileId) { audioBufferCache.set(fileId, t.buffer); rawDataCache.delete(fileId); }
+              });
+            }} className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${canRedo ? 'text-white/60 hover:text-white' : 'text-white/15 cursor-not-allowed'}`} title="Redo">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10" /></svg>
+            </button>
+            <span className="text-[10px] font-mono text-white/70 ml-1">{formatTime(currentTime)}</span>
+          </div>
 
-      {/* Center: transport controls */}
-      <div className="flex items-center gap-1">
-        <button onClick={() => seekTo(0)} className="w-8 h-8 flex items-center justify-center rounded-md text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors" title="Rewind">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="6" width="3" height="12" rx="1" /><polygon points="20,6 11,12 20,18" /></svg>
-        </button>
-        <button onClick={handlePlayPause} className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${isPlaying ? 'text-white' : 'text-white/80 hover:text-white'}`} style={{ background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }} title={isPlaying ? 'Pause' : 'Play'}>
-          {isPlaying ? (
-            <svg width="12" height="12" viewBox="0 0 12 14" fill="white"><rect x="0" y="0" width="4" height="14" rx="1" /><rect x="8" y="0" width="4" height="14" rx="1" /></svg>
-          ) : (
-            <svg width="12" height="12" viewBox="0 0 10 12" fill="white" className="ml-0.5"><polygon points="0,0 10,6 0,12" /></svg>
-          )}
-        </button>
-        <button className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-white/[0.06] transition-colors" title="Record">
-          <svg width="14" height="14" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="#e53e3e" /></svg>
-        </button>
-      </div>
+          {/* Center: transport buttons — aligned with bar 9 (50% of ruler) */}
+          <div className="absolute flex items-center gap-3 pointer-events-auto" style={{ left: '50%', transform: 'translateX(-50%)', filter: 'drop-shadow(0 0 4px rgba(0,0,0,0.8))' }}>
+            <button onClick={() => seekTo(0)} className="w-8 h-8 flex items-center justify-center rounded-full text-white/80 hover:text-white transition-colors" title="Skip Back">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="6" width="3" height="12" rx="1" /><polygon points="20,6 11,12 20,18" /></svg>
+            </button>
+            <button onClick={() => seekTo(Math.max(0, currentTime - 5))} className="w-8 h-8 flex items-center justify-center rounded-full text-white/80 hover:text-white transition-colors" title="Rewind">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="11,6 2,12 11,18" /><polygon points="22,6 13,12 22,18" /></svg>
+            </button>
+            <button onClick={handlePlayPause} className={`w-14 h-14 rounded-full flex items-center justify-center transition-all relative z-[5] ${isPlaying ? 'text-white' : 'text-white hover:text-white'}`} style={{ background: 'linear-gradient(180deg, #9333EA 0%, #6B21A8 100%)', boxShadow: '0 0 30px rgba(147,51,234,0.5), 0 0 60px rgba(124,58,237,0.2)', isolation: 'isolate' }} title={isPlaying ? 'Pause' : 'Play'}>
+              {isPlaying ? (
+                <svg width="16" height="16" viewBox="0 0 12 14" fill="white"><rect x="0" y="0" width="4" height="14" rx="1" /><rect x="8" y="0" width="4" height="14" rx="1" /></svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 10 12" fill="white" className="ml-0.5"><polygon points="0,0 10,6 0,12" /></svg>
+              )}
+            </button>
+            <button onClick={() => seekTo(Math.min(duration, currentTime + 5))} className="w-8 h-8 flex items-center justify-center rounded-full text-white/80 hover:text-white transition-colors" title="Fast Forward">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="13,6 22,12 13,18" /><polygon points="2,6 11,12 2,18" /></svg>
+            </button>
+          </div>
 
-      {/* Right: track size */}
-      <div className="flex items-center gap-1 w-16 justify-end shrink-0">
-        <button onClick={() => onZoomChange?.('half')} className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${trackZoom === 'half' ? 'text-ghost-green bg-white/[0.08]' : 'text-white/30 hover:text-white/60 hover:bg-white/[0.06]'}`} title="Compact">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="8" y1="11" x2="14" y2="11" /></svg>
-        </button>
-        <button onClick={() => onZoomChange?.('full')} className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${trackZoom === 'full' ? 'text-ghost-green bg-white/[0.08]' : 'text-white/30 hover:text-white/60 hover:bg-white/[0.06]'}`} title="Full">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="11" y1="8" x2="11" y2="14" /><line x1="8" y1="11" x2="14" y2="11" /></svg>
-        </button>
-      </div>
+          {/* Right: time + volume + zoom */}
+          <div className="absolute right-3 flex items-center gap-2 pointer-events-auto" style={{ filter: 'drop-shadow(0 0 3px rgba(0,0,0,0.8))' }}>
+            <span className="text-[11px] font-mono text-white/70">{formatTime(currentTime)} / {formatTime(duration)}</span>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/60"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" /></svg>
+            <button onClick={() => onZoomChange?.('half')} className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${trackZoom === 'half' ? 'text-ghost-green' : 'text-white/30 hover:text-white/60'}`} title="Compact">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="8" y1="11" x2="14" y2="11" /></svg>
+            </button>
+            <button onClick={() => onZoomChange?.('full')} className={`w-5 h-5 flex items-center justify-center rounded transition-colors ${trackZoom === 'full' ? 'text-ghost-green' : 'text-white/30 hover:text-white/60'}`} title="Full">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="11" y1="8" x2="11" y2="14" /><line x1="8" y1="11" x2="14" y2="11" /></svg>
+            </button>
+          </div>
+        </div>
+      </FrequencyBar>
     </div>
   );
 }
@@ -2909,6 +3094,7 @@ export default function PluginLayout() {
   const [showSocial, setShowSocial] = useState(false);
   const [showMarketplace, setShowMarketplace] = useState(false);
   const [chatCollapsed, setChatCollapsed] = useState(false);
+  const [videoGridHidden, setVideoGridHidden] = useState(true);
   const prevViewRef = useRef<{ projectId: string | null; packId: string | null }>({ projectId: null, packId: null });
   const [shareStatus, setShareStatus] = useState('');
   const [isBeatView, setIsBeatView] = useState(false);
@@ -3244,29 +3430,95 @@ export default function PluginLayout() {
   const members = currentProject?.members || [];
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden relative p-2 gap-2">
-      {/* Presence dock — far left */}
-      <div className="flex flex-col items-center shrink-0 w-11 py-2 z-20">
-        {/* Ghost icon */}
+    <div className="flex flex-col h-screen w-screen overflow-hidden relative">
+      {/* Full-width top bar */}
+      <div className="shrink-0 h-[46px] flex items-center pl-3 pr-5 relative" style={{ background: 'transparent' }}>
+        {/* Ghost logo — aligned with presence dock below */}
         <motion.svg
-          width="36" height="38" viewBox="0 0 20 22" fill="none" className="shrink-0 mb-3 cursor-pointer"
+          width="36" height="38" viewBox="0 0 20 22" fill="none" className="shrink-0 cursor-pointer"
           style={{ filter: 'drop-shadow(0 0 4px rgba(0,255,200,0.3))' }}
           animate={{ y: [0, -2, 0] }}
           transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
         >
           <defs>
-            <linearGradient id="ghostGrad" x1="0" y1="0" x2="20" y2="22" gradientUnits="userSpaceOnUse">
+            <linearGradient id="ghostGradNav" x1="0" y1="0" x2="20" y2="22" gradientUnits="userSpaceOnUse">
               <stop offset="0%" stopColor="#00FFC8" />
               <stop offset="100%" stopColor="#7C3AED" />
             </linearGradient>
           </defs>
-          <path d="M10 1C5.5 1 2 4.5 2 9v8l2-2 2 2 2-2 2 2 2-2 2 2 2-2 2 2V9c0-4.5-3.5-8-8-8z" fill="rgba(0,255,200,0.08)" stroke="url(#ghostGrad)" strokeWidth="1.5" strokeLinejoin="round" />
-          <ellipse cx="7.5" cy="9.5" rx="1.6" ry="1.8" fill="url(#ghostGrad)" opacity="0.9" />
-          <ellipse cx="12.5" cy="9.5" rx="1.6" ry="1.8" fill="url(#ghostGrad)" opacity="0.9" />
+          <path d="M10 1C5.5 1 2 4.5 2 9v8l2-2 2 2 2-2 2 2 2-2 2 2 2-2 2 2V9c0-4.5-3.5-8-8-8z" fill="rgba(0,255,200,0.08)" stroke="url(#ghostGradNav)" strokeWidth="1.5" strokeLinejoin="round" />
+          <ellipse cx="7.5" cy="9.5" rx="1.6" ry="1.8" fill="url(#ghostGradNav)" opacity="0.9" />
+          <ellipse cx="12.5" cy="9.5" rx="1.6" ry="1.8" fill="url(#ghostGradNav)" opacity="0.9" />
           <ellipse cx="7.5" cy="9.2" rx="0.6" ry="0.7" fill="#0A0412" />
           <ellipse cx="12.5" cy="9.2" rx="0.6" ry="0.7" fill="#0A0412" />
         </motion.svg>
-        <div className="w-6 h-px bg-white/10 mb-3" />
+
+        {/* Center: BPM / Time / Key — absolutely centered */}
+        {currentProject && (
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-0 shrink-0">
+            <div className="flex items-center gap-1 px-3 shrink-0">
+              <span className="text-[11px] text-ghost-text-muted/60 uppercase tracking-wider">BPM</span>
+              <input
+                type="text" inputMode="numeric" maxLength={3}
+                className="w-12 text-[14px] font-bold text-white bg-transparent border border-transparent hover:bg-white/[0.04] hover:border-white/[0.08] focus:bg-white/[0.04] focus:border-ghost-green/30 outline-none px-1.5 py-0 rounded-md transition-colors text-center cursor-text"
+                style={{ fontFamily: "'Consolas', monospace" }}
+                value={projectBpm} placeholder=""
+                onChange={(e) => { const val = e.target.value.replace(/\D/g, '').slice(0, 3); setProjectBpm(val); if (bpmTimer.current) clearTimeout(bpmTimer.current); bpmTimer.current = setTimeout(() => { if (val) updateProject(currentProject.id, { tempo: parseInt(val) }); }, 500); }}
+                onBlur={() => { if (bpmTimer.current) clearTimeout(bpmTimer.current); if (projectBpm) updateProject(currentProject.id, { tempo: parseInt(projectBpm) }); }}
+              />
+            </div>
+            <div className="w-px h-5 bg-white/10 shrink-0" />
+            <div className="flex items-center gap-1 px-3 shrink-0">
+              <span className="text-[11px] text-ghost-text-muted/60 uppercase tracking-wider">Time</span>
+              <select
+                className="text-[14px] font-bold text-white bg-transparent border border-transparent hover:bg-white/[0.04] hover:border-white/[0.08] focus:bg-white/[0.04] focus:border-ghost-green/30 outline-none px-1 py-0 rounded-md transition-colors text-center cursor-pointer appearance-none"
+                style={{ fontFamily: "'Consolas', monospace", backgroundImage: 'none' }}
+                value={projectTimeSig}
+                onChange={(e) => { setProjectTimeSig(e.target.value); updateProject(currentProject.id, { timeSignature: e.target.value } as any); }}
+              >
+                {['2/4','3/4','4/4','5/4','6/4','7/4','6/8','7/8','9/8','12/8'].map(ts => (
+                  <option key={ts} style={{ background: '#1a0e2e', color: '#fff' }} value={ts}>{ts}</option>
+                ))}
+              </select>
+            </div>
+            <div className="w-px h-5 bg-white/10 shrink-0" />
+            <div className="flex items-center gap-1 px-3 shrink-0">
+              <span className="text-[11px] text-ghost-text-muted/60 uppercase tracking-wider">Key</span>
+              <input
+                type="text" maxLength={3}
+                className="w-12 text-[14px] font-bold text-white bg-transparent border border-transparent hover:bg-white/[0.04] hover:border-white/[0.08] focus:bg-white/[0.04] focus:border-ghost-green/30 outline-none px-1.5 py-0 rounded-md transition-colors text-center cursor-text"
+                style={{ fontFamily: "'Consolas', monospace" }}
+                value={projectKey} placeholder=""
+                onChange={(e) => { const val = e.target.value.slice(0, 3); setProjectKey(val); if (keyTimer.current) clearTimeout(keyTimer.current); keyTimer.current = setTimeout(() => { if (val) updateProject(currentProject.id, { key: val }); }, 500); }}
+                onBlur={() => { if (keyTimer.current) clearTimeout(keyTimer.current); if (projectKey) updateProject(currentProject.id, { key: projectKey }); }}
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="flex-1" />
+
+        {/* Right: nav links */}
+        <div className="flex items-center gap-1 shrink-0">
+          <button onClick={() => { setShowSocial(true); setSelectedProjectId(null); setSelectedPackId(null); setShowMarketplace(false); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-white/50 hover:text-white transition-colors">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+            Social
+          </button>
+          <button onClick={() => { setShowMarketplace(true); setShowSocial(false); setSelectedProjectId(null); setSelectedPackId(null); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-white/50 hover:text-white transition-colors">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg>
+            Marketplace
+          </button>
+          <button onClick={() => { setShowFriendSearch(!showFriendSearch); setFriendSearchQuery(''); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-white/50 hover:text-white transition-colors">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+            Search
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-1 min-h-0 p-2 gap-2">
+      {/* Presence dock — far left */}
+      <div className="flex flex-col items-center shrink-0 w-11 py-2 z-20">
+        {/* Ghost icon moved to top navbar */}
         {/* Add friend button */}
         <motion.button
           onClick={() => { setShowFriendSearch(!showFriendSearch); setFriendSearchQuery(''); }}
@@ -3307,124 +3559,6 @@ export default function PluginLayout() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Header bar */}
-        <div className="flex items-center shrink-0 relative h-14 gap-2">
-          <div className="flex-1 flex items-center px-4 gap-3 glass glass-glow rounded-2xl h-11 min-w-0">
-            {/* Social button */}
-            <button
-              onClick={() => {
-                if (!showSocial) {
-                  prevViewRef.current = { projectId: selectedProjectId, packId: selectedPackId };
-                  setSelectedProjectId(null); setSelectedPackId(null); setShowSocial(true);
-                } else {
-                  setShowSocial(false);
-                  const prev = prevViewRef.current;
-                  if (prev.projectId) selectProject(prev.projectId);
-                  else if (prev.packId) { setSelectedPackId(prev.packId); }
-                }
-              }}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg font-semibold text-[13px] transition-all whitespace-nowrap shrink-0 active:scale-[0.98] ${
-                showSocial
-                  ? 'bg-purple-600 text-white shadow-[0_0_16px_rgba(124,58,237,0.3)]'
-                  : 'text-white/60 hover:text-white'
-              }`}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill={showSocial ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-              </svg>
-              Social
-            </button>
-            {/* Marketplace button */}
-            <button
-              onClick={() => { setShowMarketplace(!showMarketplace); if (!showMarketplace) { setShowSocial(false); setSelectedProjectId(null); setSelectedPackId(null); } }}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg font-semibold text-[13px] transition-all whitespace-nowrap shrink-0 active:scale-[0.98] ${
-                showMarketplace
-                  ? 'bg-emerald-600 text-white shadow-[0_0_16px_rgba(16,185,129,0.3)]'
-                  : 'text-white/60 hover:text-white'
-              }`}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" />
-                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
-              </svg>
-              Marketplace
-            </button>
-            {/* Search bar — always visible */}
-            <div ref={friendSearchRef} className="flex-1 flex items-center gap-2 group/search relative z-[100]">
-              <div className="relative flex-1">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/60 pointer-events-none">
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                </svg>
-                <input
-                  ref={friendSearchInputRef}
-                  type="text"
-                  value={friendSearchQuery}
-                  onChange={(e) => { setFriendSearchQuery(e.target.value); if (!showFriendSearch) setShowFriendSearch(true); }}
-                  onFocus={() => setShowFriendSearch(true)}
-                  onKeyDown={(e) => { if (e.key === 'Escape') { setShowFriendSearch(false); setFriendSearchQuery(''); (e.target as HTMLInputElement).blur(); } }}
-                  placeholder="Search"
-                  className="w-full h-10 pl-10 pr-4 rounded-xl bg-transparent border border-transparent group-hover/search:border-white/[0.06] focus:border-white/[0.15] focus:bg-white/[0.03] text-[13px] font-semibold text-white/80 placeholder:text-white/60 focus:outline-none transition-all"
-                />
-                {friendSearchQuery.trim() && showFriendSearch && (
-                  <div className="absolute left-0 right-0 top-full mt-1 glass rounded-lg shadow-popup z-[9999] max-h-48 overflow-y-auto">
-                    {friendSearchResults.length === 0 ? (
-                      <p className="px-3 py-2.5 text-[13px] text-ghost-text-muted">No users found</p>
-                    ) : (
-                      friendSearchResults.map((u) => (
-                        <button
-                          key={u.id}
-                          onClick={() => { setShowFriendSearch(false); setFriendSearchQuery(''); }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-white/[0.06] transition-colors"
-                        >
-                          <div className="w-7 h-7 rounded-full bg-ghost-purple/30 flex items-center justify-center text-[11px] font-bold text-ghost-purple shrink-0">
-                            {u.avatarUrl ? (
-                              <img src={u.avatarUrl} className="w-7 h-7 rounded-full object-cover" />
-                            ) : (
-                              u.displayName.charAt(0).toUpperCase()
-                            )}
-                          </div>
-                          <div className="flex flex-col items-start min-w-0">
-                            <span className="text-[13px] text-ghost-text-primary font-medium truncate">{u.displayName}</span>
-                            <span className="text-[11px] text-ghost-text-muted truncate">{u.email}</span>
-                          </div>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-              {friendSearchQuery && (
-                <button
-                  onClick={() => { setShowFriendSearch(false); setFriendSearchQuery(''); }}
-                  className="text-white/30 hover:text-white transition-colors shrink-0"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              )}
-            </div>
-          </div>
-          {/* Icons box in header */}
-          <div className="w-[300px] flex items-center justify-evenly shrink-0 glass glass-glow rounded-2xl h-11">
-            <button onClick={() => { setShowFriendSearch(!showFriendSearch); setFriendSearchQuery(''); }} className="text-white/40 hover:text-ghost-green transition-colors" title="Add Friend">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></svg>
-            </button>
-            <button onClick={() => { setShowNotifs(!showNotifs); setShowSettings(false); if (!showNotifs && chatNotifications.length > 0) { api.markNotificationsRead().then(() => setChatNotifications([])).catch(() => {}); } }} className="text-white/40 hover:text-ghost-green transition-colors">
-              <BellIcon count={invitations.length + chatNotifications.length} />
-            </button>
-            <button className="text-white/40 hover:text-ghost-green transition-colors" title="Inbox">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" /><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
-            </button>
-            <button onClick={() => { setShowSettings(!showSettings); setShowNotifs(false); }} className="shrink-0 rounded-full outline-none focus:outline-none">
-              <Avatar name={user?.displayName || '?'} src={user?.avatarUrl} size="sm" />
-            </button>
-          </div>
-
-        </div>
-
         {/* Popups */}
         {showSettings && (
           <SettingsPopup
@@ -3458,14 +3592,9 @@ export default function PluginLayout() {
         <div className="flex-1 flex min-h-0 gap-2 pb-2">
           {selectedProjectId && currentProject ? (
             <>
-              <div className="flex-1 flex flex-col min-w-0 glass glass-glow rounded-2xl overflow-hidden">
-              <div className="flex-1 flex flex-col min-h-0">
-              <div className="flex-1 overflow-y-auto p-4">
-                {shareStatus && <div className="mb-3 px-4 py-2 rounded-lg bg-purple-500/20 border border-purple-500/30 text-[13px] text-purple-300 font-medium text-center">{shareStatus}</div>}
-
-                {/* Project info bar */}
-                <div className="mb-4">
-                  <div className="flex items-center gap-3 glass-subtle pl-6 pr-3 min-w-0 h-[36px]">
+              <div className="flex-1 flex flex-col min-w-0">
+              {/* Project info bar */}
+                  <div className="flex items-center gap-3 shrink-0 rounded-xl mb-1 pl-6 pr-3 min-w-0 h-[36px]" style={{ background: 'rgba(10,4,18,0.95)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00FFC8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-60">
                       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                     </svg>
@@ -3487,72 +3616,6 @@ export default function PluginLayout() {
                         }
                       }}
                     />
-                    <div className="w-px h-5 bg-white/10 shrink-0" />
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-[11px] text-ghost-text-muted/60 uppercase tracking-wider">BPM</span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={3}
-                        className="w-12 text-[14px] font-bold text-white bg-transparent border border-transparent hover:bg-white/[0.04] hover:border-white/[0.08] focus:bg-white/[0.04] focus:border-ghost-green/30 outline-none px-1.5 py-0 rounded-md transition-colors text-center cursor-text"
-                        style={{ fontFamily: "'Consolas', monospace" }}
-                        value={projectBpm}
-                        placeholder=""
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/\D/g, '').slice(0, 3);
-                          setProjectBpm(val);
-                          if (bpmTimer.current) clearTimeout(bpmTimer.current);
-                          bpmTimer.current = setTimeout(() => {
-                            if (val) updateProject(currentProject.id, { tempo: parseInt(val) });
-                          }, 500);
-                        }}
-                        onBlur={() => {
-                          if (bpmTimer.current) clearTimeout(bpmTimer.current);
-                          if (projectBpm) updateProject(currentProject.id, { tempo: parseInt(projectBpm) });
-                        }}
-                      />
-                    </div>
-                    <div className="w-px h-5 bg-white/10 shrink-0" />
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-[11px] text-ghost-text-muted/60 uppercase tracking-wider">Time</span>
-                      <select
-                        className="text-[14px] font-bold text-white bg-transparent border border-transparent hover:bg-white/[0.04] hover:border-white/[0.08] focus:bg-white/[0.04] focus:border-ghost-green/30 outline-none px-1 py-0 rounded-md transition-colors text-center cursor-pointer appearance-none"
-                        style={{ fontFamily: "'Consolas', monospace", backgroundImage: 'none' }}
-                        value={projectTimeSig}
-                        onChange={(e) => {
-                          setProjectTimeSig(e.target.value);
-                          updateProject(currentProject.id, { timeSignature: e.target.value } as any);
-                        }}
-                      >
-                        {['2/4','3/4','4/4','5/4','6/4','7/4','6/8','7/8','9/8','12/8'].map(ts => (
-                          <option key={ts} style={{ background: '#1a0e2e', color: '#fff' }} value={ts}>{ts}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="w-px h-5 bg-white/10 shrink-0" />
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-[11px] text-ghost-text-muted/60 uppercase tracking-wider">Key</span>
-                      <input
-                        type="text"
-                        maxLength={3}
-                        className="w-12 text-[14px] font-bold text-white bg-transparent border border-transparent hover:bg-white/[0.04] hover:border-white/[0.08] focus:bg-white/[0.04] focus:border-ghost-green/30 outline-none px-1.5 py-0 rounded-md transition-colors text-center cursor-text"
-                        style={{ fontFamily: "'Consolas', monospace" }}
-                        value={projectKey}
-                        placeholder=""
-                        onChange={(e) => {
-                          const val = e.target.value.slice(0, 3);
-                          setProjectKey(val);
-                          if (keyTimer.current) clearTimeout(keyTimer.current);
-                          keyTimer.current = setTimeout(() => {
-                            if (val) updateProject(currentProject.id, { key: val });
-                          }, 500);
-                        }}
-                        onBlur={() => {
-                          if (keyTimer.current) clearTimeout(keyTimer.current);
-                          if (projectKey) updateProject(currentProject.id, { key: projectKey });
-                        }}
-                      />
-                    </div>
                     {currentProject.updatedAt && (
                       <>
                         <div className="w-px h-5 bg-white/10 shrink-0" />
@@ -3596,7 +3659,10 @@ export default function PluginLayout() {
                       )}
                     </div>
                   </div>
-                </div>
+              <div className="flex-1 flex flex-col min-w-0 glass glass-glow rounded-2xl overflow-hidden">
+              <div className="flex-1 flex flex-col min-h-0">
+              <div className="flex-1 overflow-y-auto p-4">
+                {shareStatus && <div className="mb-3 px-4 py-2 rounded-lg bg-purple-500/20 border border-purple-500/30 text-[13px] text-purple-300 font-medium text-center">{shareStatus}</div>}
 
                 {/* Version History panel */}
                 {showVersionHistory && (
@@ -3687,14 +3753,10 @@ export default function PluginLayout() {
                 </div>
                 </div>
 
-                {/* Drop zone */}
-                <FullMixDropZone projectId={selectedProjectId!} onFilesAdded={() => fetchProject(selectedProjectId!)} isBeat={isBeatView} compact={trackZoom === 'half'} />
-
-                {/* Transport bar */}
-                <TransportBar tracks={currentProject.tracks} projectId={selectedProjectId!} projectTempo={currentProject.tempo} onTempoChange={(bpm) => updateProject(selectedProjectId!, { tempo: bpm })} trackZoom={trackZoom} onZoomChange={setTrackZoom} />
-                {/* Arrangement view — drop zone enabled */}
+                {/* Arrangement view with bar ruler, drop zone, and tracks */}
                 <ArrangementDropZone projectId={selectedProjectId!} onFilesAdded={() => fetchProject(selectedProjectId!)}>
                   <BarRuler />
+                  <FullMixDropZone projectId={selectedProjectId!} onFilesAdded={() => fetchProject(selectedProjectId!)} isBeat={isBeatView} compact={trackZoom === 'half'} />
                   <div className="relative space-y-1">
                     {[...currentProject.tracks].reverse().map((track: any) => (
                       <TrackWithWidth key={track.id} track={track} selectedProjectId={selectedProjectId!} deleteTrack={deleteTrack} updateTrack={updateTrack} trackZoom={trackZoom} fetchProject={fetchProject} />
@@ -3706,8 +3768,9 @@ export default function PluginLayout() {
               </div>
               </div>
               </div>
+              </div>
 
-              {/* Right panel: chat */}
+              {/* Right panel: icons + video + chat */}
               <div className="relative flex flex-col min-h-0 h-full gap-2 overflow-hidden">
                 <button
                   onClick={() => setChatCollapsed(!chatCollapsed)}
@@ -3720,10 +3783,27 @@ export default function PluginLayout() {
                 </button>
                 {!chatCollapsed && (
                   <>
-                  {/* Video grid — persistent above chat */}
-                  <div className="w-[300px] shrink-0">
-                    <VideoGrid members={members} userId={user?.id} onAddFriend={() => { setShowFriendSearch(true); setFriendSearchQuery(''); setTimeout(() => { friendSearchInputRef.current?.focus(); }, 100); }} />
+                  {/* Icons bar */}
+                  <div className="w-[300px] shrink-0 flex items-center justify-evenly glass glass-glow rounded-2xl h-11">
+                    <button onClick={() => setVideoGridHidden(!videoGridHidden)} className={`transition-colors ${videoGridHidden ? 'text-ghost-green' : 'text-white/40 hover:text-ghost-green'}`} title={videoGridHidden ? 'Show Video Grid' : 'Hide Video Grid'}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></svg>
+                    </button>
+                    <button onClick={() => { setShowNotifs(!showNotifs); setShowSettings(false); if (!showNotifs && chatNotifications.length > 0) { api.markNotificationsRead().then(() => setChatNotifications([])).catch(() => {}); } }} className="text-white/40 hover:text-ghost-green transition-colors">
+                      <BellIcon count={invitations.length + chatNotifications.length} />
+                    </button>
+                    <button className="text-white/40 hover:text-ghost-green transition-colors" title="Inbox">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" /><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg>
+                    </button>
+                    <button onClick={() => { setShowSettings(!showSettings); setShowNotifs(false); }} className="shrink-0 rounded-full outline-none focus:outline-none">
+                      <Avatar name={user?.displayName || '?'} src={user?.avatarUrl} size="sm" />
+                    </button>
                   </div>
+                  {/* Video grid — toggleable */}
+                  {!videoGridHidden && (
+                    <div className="w-[300px] shrink-0">
+                      <VideoGrid members={members} userId={user?.id} onAddFriend={() => { setShowFriendSearch(true); setFriendSearchQuery(''); setTimeout(() => { friendSearchInputRef.current?.focus(); }, 100); }} />
+                    </div>
+                  )}
                   <div className="w-[300px] flex flex-col min-h-0 flex-1 overflow-hidden glass glass-glow rounded-2xl">
                     <ChatPanel />
                   </div>
@@ -3789,6 +3869,11 @@ export default function PluginLayout() {
           )}
         </div>
       </div>
+      </div>{/* close inner horizontal flex */}
+      {/* Full-width transport bar at bottom */}
+      {selectedProjectId && currentProject && (
+        <TransportBar tracks={currentProject.tracks} projectId={selectedProjectId!} projectTempo={currentProject.tempo} onTempoChange={(bpm) => updateProject(selectedProjectId!, { tempo: bpm })} trackZoom={trackZoom} onZoomChange={setTrackZoom} />
+      )}
     </div>
   );
 }
