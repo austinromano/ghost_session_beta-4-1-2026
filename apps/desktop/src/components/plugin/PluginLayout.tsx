@@ -12,11 +12,15 @@ import { useAudioStore } from '../../stores/audioStore';
 import { API_BASE } from '../../lib/constants';
 import { audioBufferCache, rawDataCache } from '../../lib/audio';
 
+// Hooks
+import { useNotifications } from '../../hooks/useNotifications';
+import { useSamplePacks, type SamplePack } from '../../hooks/useSamplePacks';
+
 // Extracted components
-import ProjectListSidebar, { type SamplePack } from '../layout/ProjectListSidebar';
+import ProjectListSidebar from '../layout/ProjectListSidebar';
 import PresenceFriendsList from '../layout/PresenceFriendsList';
 import SettingsPopup from '../common/SettingsPopup';
-import NotificationPopup, { BellIcon, type Invitation, type Notification } from '../common/NotificationPopup';
+import NotificationPopup, { BellIcon } from '../common/NotificationPopup';
 import InviteModal from '../common/InviteModal';
 import VideoGrid from '../video/VideoGrid';
 import StemRow from '../tracks/StemRow';
@@ -233,6 +237,10 @@ export default function PluginLayout() {
   const { projects, currentProject, fetchProjects, fetchProject, createProject, updateProject, addTrack, updateTrack, deleteTrack, versions, fetchVersions } = useProjectStore();
   const { join, leave } = useSessionStore();
 
+  // Domain hooks
+  const notifs = useNotifications();
+  const samplePackState = useSamplePacks();
+
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [showSocial, setShowSocial] = useState(false);
   const [showMarketplace, setShowMarketplace] = useState(false);
@@ -251,12 +259,7 @@ export default function PluginLayout() {
   const [friendSearchResults, setFriendSearchResults] = useState<any[]>([]);
   const friendSearchRef = useRef<HTMLDivElement>(null);
   const friendSearchInputRef = useRef<HTMLInputElement>(null);
-  const [invitations, setInvitations] = useState<Invitation[]>([]);
-  const [chatNotifications, setChatNotifications] = useState<Notification[]>([]);
   const [friends, setFriends] = useState<{ id: string; displayName: string; avatarUrl: string | null }[]>([]);
-  const [samplePacks, setSamplePacks] = useState<SamplePack[]>([]);
-  const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
-  const [selectedPack, setSelectedPack] = useState<(SamplePack & { items?: any[] }) | null>(null);
   const [editingField, setEditingField] = useState<'name' | 'tempo' | 'key' | 'genre' | 'timeSig' | null>(null);
   const [projectTimeSig, setProjectTimeSig] = useState('4/4');
   const [editValue, setEditValue] = useState('');
@@ -291,12 +294,7 @@ export default function PluginLayout() {
 
   useEffect(() => {
     fetchProjects();
-    fetchInvitations();
-    fetchNotifications();
-    fetchSamplePacks();
     api.listUsers().then(setFriends).catch(() => {});
-    const pollInterval = setInterval(() => { fetchInvitations(); fetchNotifications(); }, 10000);
-    return () => clearInterval(pollInterval);
   }, []);
 
   // Event-driven project refresh (replaces 3-second polling)
@@ -350,25 +348,9 @@ export default function PluginLayout() {
 
   // ── Handlers ──
 
-  const fetchSamplePacks = async () => { try { const packs = await api.listSamplePacks(); setSamplePacks(packs.map((p: any) => ({ id: p.id, name: p.name, samples: [], updatedAt: p.updatedAt }))); } catch {} };
-  const fetchNotifications = async () => { try { const notifs = await api.getNotifications(); setChatNotifications(notifs); } catch {} };
-  const fetchPackDetail = async (id: string) => { try { const detail = await api.getSamplePack(id); setSelectedPack(detail); } catch {} };
-
-  const fetchInvitations = async () => {
-    try {
-      const res = await fetch(API_BASE + '/invitations', { headers: { Authorization: `Bearer ${useAuthStore.getState().token}` } });
-      const json = await res.json();
-      if (json.data) setInvitations(json.data);
-    } catch {}
-  };
-
-  const acceptInvite = async (id: string) => {
-    try { await fetch(API_BASE + `/invitations/${id}/accept`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${useAuthStore.getState().token}` }, body: '{}' }); fetchInvitations(); fetchProjects(); } catch {}
-  };
-
-  const declineInvite = async (id: string) => {
-    try { await fetch(API_BASE + `/invitations/${id}/decline`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${useAuthStore.getState().token}` }, body: '{}' }); fetchInvitations(); } catch {}
-  };
+  // Notification handlers delegate to hook + refresh projects on accept
+  const acceptInvite = async (id: string) => { await notifs.acceptInvite(id); fetchProjects(); };
+  const declineInvite = notifs.declineInvite;
 
   const selectProject = async (id: string) => {
     if (selectedProjectId) { leave(); audioCleanup(); }
@@ -376,14 +358,14 @@ export default function PluginLayout() {
       const p = await createProject({ name: 'Untitled', projectType: 'beat' } as any);
       await fetchProjects();
       setSelectedProjectId(p.id);
-      setSelectedPackId(null);
+      samplePackState.setSelectedPackId(null);
       setShowSocial(false);
       setIsBeatView(true);
       fetchProject(p.id);
       return;
     }
     setSelectedProjectId(id);
-    setSelectedPackId(null);
+    samplePackState.setSelectedPackId(null);
     setShowSocial(false);
     setShowMarketplace(false);
     const proj = projects.find((p: any) => p.id === id);
@@ -422,11 +404,11 @@ export default function PluginLayout() {
     try { await fetch(`${API_BASE}/social/posts`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('ghost_token')}` }, body: JSON.stringify({ text: `Check out my project "${currentProject.name}" 🎵`, projectId: selectedProjectId }) }); setShareStatus('Shared to feed!'); setTimeout(() => setShareStatus(''), 3000); } catch { setShareStatus('Failed to share'); setTimeout(() => setShareStatus(''), 3000); }
   };
 
-  const handleCreatePack = async () => { try { const pack = await api.createSamplePack({ name: 'Untitled' }); await fetchSamplePacks(); setSelectedPackId(pack.id); setSelectedProjectId(null); fetchPackDetail(pack.id); } catch {} };
-  const handleSelectPack = (id: string) => { setSelectedPackId(id); setSelectedProjectId(null); if (selectedProjectId) { leave(); audioCleanup(); } fetchPackDetail(id); };
-  const handleRenamePack = async (id: string, name: string) => { setSamplePacks((prev) => prev.map((sp) => sp.id === id ? { ...sp, name } : sp)); setSelectedPack((prev) => prev && prev.id === id ? { ...prev, name } : prev); try { await api.updateSamplePack(id, { name }); } catch {} };
-  const handleDeletePack = async (id: string) => { try { await api.deleteSamplePack(id); setSamplePacks((prev) => prev.filter((sp) => sp.id !== id)); if (selectedPackId === id) { setSelectedPackId(null); setSelectedPack(null); } } catch {} };
-  const handleRemoveSampleFromPack = async (packId: string, itemId: string) => { try { await api.removeSamplePackItem(packId, itemId); fetchPackDetail(packId); } catch {} };
+  const handleCreatePack = async () => { const pack = await samplePackState.createPack(); if (pack) setSelectedProjectId(null); };
+  const handleSelectPack = (id: string) => { samplePackState.selectPack(id); setSelectedProjectId(null); if (selectedProjectId) { leave(); audioCleanup(); } };
+  const handleRenamePack = samplePackState.renamePack;
+  const handleDeletePack = samplePackState.deletePack;
+  const handleRemoveSampleFromPack = samplePackState.removeSample;
 
   // ── Render ──
 
@@ -464,10 +446,10 @@ export default function PluginLayout() {
 
         <div className="flex-1" />
         <div className="flex items-center gap-1 shrink-0">
-          <button onClick={() => { setShowSocial(true); setSelectedProjectId(null); setSelectedPackId(null); setShowMarketplace(false); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-white/50 hover:text-white transition-colors">
+          <button onClick={() => { setShowSocial(true); setSelectedProjectId(null); samplePackState.setSelectedPackId(null); setShowMarketplace(false); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-white/50 hover:text-white transition-colors">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>Social
           </button>
-          <button onClick={() => { setShowMarketplace(true); setShowSocial(false); setSelectedProjectId(null); setSelectedPackId(null); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-white/50 hover:text-white transition-colors">
+          <button onClick={() => { setShowMarketplace(true); setShowSocial(false); setSelectedProjectId(null); samplePackState.setSelectedPackId(null); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-white/50 hover:text-white transition-colors">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg>Marketplace
           </button>
           <button onClick={() => { setShowFriendSearch(!showFriendSearch); setFriendSearchQuery(''); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-white/50 hover:text-white transition-colors">
@@ -489,16 +471,16 @@ export default function PluginLayout() {
         {/* Sidebar */}
         <div className="w-[210px] shrink-0 glass glass-glow flex flex-col">
           <div className="flex-1 min-h-0 flex flex-col">
-            <ProjectListSidebar projects={projects.filter((p: any) => p.projectType !== 'beat')} allProjects={projects} selectedId={selectedProjectId} onSelect={selectProject} onCreate={handleCreate} onCreateBeat={handleCreateBeat} samplePacks={samplePacks} selectedPackId={selectedPackId} onSelectPack={handleSelectPack} onCreatePack={handleCreatePack} friends={friends} />
+            <ProjectListSidebar projects={projects.filter((p: any) => p.projectType !== 'beat')} allProjects={projects} selectedId={selectedProjectId} onSelect={selectProject} onCreate={handleCreate} onCreateBeat={handleCreateBeat} samplePacks={samplePackState.packs} selectedPackId={samplePackState.selectedPackId} onSelectPack={handleSelectPack} onCreatePack={handleCreatePack} friends={friends} />
           </div>
         </div>
 
         {/* Main content */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {showSettings && <SettingsPopup user={user} onSignOut={() => { setShowSettings(false); logout(); }} onDeleteAccount={async () => { setShowSettings(false); await useAuthStore.getState().deleteAccount(); }} onClose={() => setShowSettings(false)} onProfile={() => { setShowSocial(true); setSelectedProjectId(null); setSelectedPackId(null); }} />}
-          {showNotifs && (<><div className="fixed inset-0 z-40" onClick={() => setShowNotifs(false)} /><NotificationPopup invitations={invitations} onAccept={acceptInvite} onDecline={declineInvite} notifications={chatNotifications} onMarkRead={() => { api.markNotificationsRead().then(() => setChatNotifications([])).catch(() => {}); }} /></>)}
+          {showSettings && <SettingsPopup user={user} onSignOut={() => { setShowSettings(false); logout(); }} onDeleteAccount={async () => { setShowSettings(false); await useAuthStore.getState().deleteAccount(); }} onClose={() => setShowSettings(false)} onProfile={() => { setShowSocial(true); setSelectedProjectId(null); samplePackState.setSelectedPackId(null); }} />}
+          {showNotifs && (<><div className="fixed inset-0 z-40" onClick={() => setShowNotifs(false)} /><NotificationPopup invitations={notifs.invitations} onAccept={acceptInvite} onDecline={declineInvite} notifications={notifs.notifications} onMarkRead={notifs.markAllRead} /></>)}
           {showInvite && selectedProjectId && <InviteModal open={showInvite} onClose={() => setShowInvite(false)} projectId={selectedProjectId} />}
-          {showInvite && selectedPackId && !selectedProjectId && <InviteModal open={showInvite} onClose={() => setShowInvite(false)} projectId={selectedPackId} />}
+          {showInvite && samplePackState.selectedPackId && !selectedProjectId && <InviteModal open={showInvite} onClose={() => setShowInvite(false)} projectId={samplePackState.selectedPackId!} />}
 
           <div className="flex-1 flex min-h-0 gap-2 pb-2">
             {selectedProjectId && currentProject ? (
@@ -610,7 +592,7 @@ export default function PluginLayout() {
                     <>
                     <div className="w-[300px] shrink-0 flex items-center justify-evenly glass glass-glow rounded-2xl h-11">
                       <button onClick={() => setVideoGridHidden(!videoGridHidden)} className={`transition-colors ${videoGridHidden ? 'text-ghost-green' : 'text-white/40 hover:text-ghost-green'}`} title={videoGridHidden ? 'Show Video Grid' : 'Hide Video Grid'}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></svg></button>
-                      <button onClick={() => { setShowNotifs(!showNotifs); setShowSettings(false); if (!showNotifs && chatNotifications.length > 0) { api.markNotificationsRead().then(() => setChatNotifications([])).catch(() => {}); } }} className="text-white/40 hover:text-ghost-green transition-colors"><BellIcon count={invitations.length + chatNotifications.length} /></button>
+                      <button onClick={() => { setShowNotifs(!showNotifs); setShowSettings(false); if (!showNotifs && notifs.notifications.length > 0) notifs.markAllRead(); }} className="text-white/40 hover:text-ghost-green transition-colors"><BellIcon count={notifs.totalCount} /></button>
                       <button className="text-white/40 hover:text-ghost-green transition-colors" title="Inbox"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12" /><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg></button>
                       <button onClick={() => { setShowSettings(!showSettings); setShowNotifs(false); }} className="shrink-0 rounded-full outline-none focus:outline-none"><Avatar name={user?.displayName || '?'} src={user?.avatarUrl} size="sm" /></button>
                     </div>
@@ -620,9 +602,9 @@ export default function PluginLayout() {
                   )}
                 </div>
               </>
-            ) : selectedPackId && selectedPack ? (
+            ) : samplePackState.selectedPackId && samplePackState.selectedPack ? (
               <>
-                <SamplePackContentView pack={selectedPack} onRenamePack={handleRenamePack} onDeletePack={handleDeletePack} onRemoveSample={handleRemoveSampleFromPack} onRefresh={fetchPackDetail} members={members} onInvite={() => setShowInvite(true)} />
+                <SamplePackContentView pack={samplePackState.selectedPack} onRenamePack={handleRenamePack} onDeletePack={handleDeletePack} onRemoveSample={handleRemoveSampleFromPack} onRefresh={samplePackState.fetchDetail} members={members} onInvite={() => setShowInvite(true)} />
                 <div className={`relative flex flex-col min-h-0 h-full gap-2 ${chatCollapsed ? 'w-4 shrink-0' : 'overflow-hidden'}`}>
                   <button onClick={() => setChatCollapsed(!chatCollapsed)} className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-5 h-10 flex items-center justify-center rounded-full glass hover:bg-white/[0.08] transition-colors" title={chatCollapsed ? 'Show chat' : 'Hide chat'}>
                     <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-ghost-text-muted">{chatCollapsed ? <polyline points="2,1 6,6 2,11" /> : <polyline points="6,1 2,6 6,11" />}</svg>
