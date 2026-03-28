@@ -427,6 +427,13 @@ export default function PluginLayout() {
           <ellipse cx="7.5" cy="9.5" rx="1.6" ry="1.8" fill="url(#ghostGradNav)" opacity="0.9" /><ellipse cx="12.5" cy="9.5" rx="1.6" ry="1.8" fill="url(#ghostGradNav)" opacity="0.9" />
           <ellipse cx="7.5" cy="9.2" rx="0.6" ry="0.7" fill="#0A0412" /><ellipse cx="12.5" cy="9.2" rx="0.6" ry="0.7" fill="#0A0412" />
         </motion.svg>
+        <div className="relative mb-3 cursor-pointer" onClick={() => { setShowSettings(!showSettings); setShowNotifs(false); }} title={user?.displayName || 'Profile'}>
+          <div className="rounded-full p-[2px]" style={{ background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }}>
+            <Avatar name={user?.displayName || '?'} src={user?.avatarUrl} size="md" />
+          </div>
+          <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full" style={{ background: '#23A559', border: '2.5px solid #0A0412', boxShadow: '0 0 6px rgba(35,165,89,0.5)' }} />
+        </div>
+        <div className="w-6 h-px bg-white/10 mb-5" />
         <motion.button onClick={() => { setShowFriendSearch(!showFriendSearch); setFriendSearchQuery(''); }} className="w-9 h-9 rounded-full text-white flex items-center justify-center transition-all mb-5 shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_16px_rgba(124,58,237,0.4),0_2px_8px_rgba(0,0,0,0.3)]" style={{ background: 'linear-gradient(180deg, #7C3AED 0%, #581C87 100%)' }} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} title="Add Friend">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
         </motion.button>
@@ -474,7 +481,7 @@ export default function PluginLayout() {
         </div>
       </div>
 
-      <div className="flex flex-1 min-h-0 p-2 gap-2" style={{ paddingBottom: selectedProjectId && currentProject ? '60px' : '8px' }}>
+      <div className="flex flex-1 min-h-0 p-2 gap-2" style={{ paddingBottom: selectedProjectId && currentProject ? '48px' : '8px' }}>
         {/* Sidebar */}
         <div className={`relative flex flex-col self-stretch ${sidebarCollapsed ? 'w-4 shrink-0' : 'w-[210px] shrink-0 glass glass-glow'}`}>
           <button

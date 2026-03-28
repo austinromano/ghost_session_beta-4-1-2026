@@ -31,6 +31,44 @@ export default function ChatPanel() {
   const [text, setText] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
   const emojiRef = useRef<HTMLDivElement>(null);
+  const [showGifs, setShowGifs] = useState(false);
+  const [gifQuery, setGifQuery] = useState('');
+  const [gifResults, setGifResults] = useState<{ id: string; url: string; preview: string }[]>([]);
+  const [gifLoading, setGifLoading] = useState(false);
+  const gifSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const GIPHY_KEY = 'GlVGYHkr3WSBnllca54iNt0yFbjz7L65';
+  const searchGifs = (q: string) => {
+    if (gifSearchTimer.current) clearTimeout(gifSearchTimer.current);
+    if (!q.trim()) {
+      gifSearchTimer.current = setTimeout(async () => {
+        setGifLoading(true);
+        try {
+          const res = await fetch(`https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=12&rating=pg-13`);
+          const data = await res.json();
+          setGifResults(data.data.map((g: any) => ({ id: g.id, url: g.images.fixed_height.url, preview: g.images.fixed_width_small.url })));
+        } catch {}
+        setGifLoading(false);
+      }, 100);
+      return;
+    }
+    gifSearchTimer.current = setTimeout(async () => {
+      setGifLoading(true);
+      try {
+        const res = await fetch(`https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_KEY}&q=${encodeURIComponent(q)}&limit=12&rating=pg-13`);
+        const data = await res.json();
+        setGifResults(data.data.map((g: any) => ({ id: g.id, url: g.images.fixed_height.url, preview: g.images.fixed_width_small.url })));
+      } catch {}
+      setGifLoading(false);
+    }, 300);
+  };
+
+  const sendGif = (url: string) => {
+    sendMessage(`[gif]${url}[/gif]`);
+    setShowGifs(false);
+    setGifQuery('');
+    setGifResults([]);
+  };
 
   // Camera state
   const [videoOn, setVideoOn] = useState(false);
@@ -419,7 +457,11 @@ export default function ChatPanel() {
             return (
             <div key={origIndex} className="group hover:bg-white/[0.03] -mx-3 px-3 py-1.5 rounded transition-colors relative">
               <p className="text-[11px] font-semibold mb-0.5" style={{ color: msg.colour }}>{msg.displayName}</p>
-              <p className="text-[13px] leading-[1.4] text-ghost-text-secondary">{msg.text}</p>
+              {msg.text.startsWith('[gif]') && msg.text.endsWith('[/gif]') ? (
+                <img src={msg.text.slice(5, -6)} alt="GIF" className="rounded-lg max-w-[200px] max-h-[150px] mt-1" loading="lazy" />
+              ) : (
+                <p className="text-[13px] leading-[1.4] text-ghost-text-secondary">{msg.text}</p>
+              )}
               {msg.userId === userId && (
                 <button
                   onClick={() => deleteMessage(origIndex)}
@@ -472,6 +514,28 @@ export default function ChatPanel() {
             </div>
           </div>
         )}
+        {/* GIF picker */}
+        {showGifs && (
+          <div className="mb-2 bg-[#111214] rounded-lg border border-white/10 overflow-hidden">
+            <input
+              autoFocus
+              className="w-full bg-transparent text-[13px] text-white placeholder:text-white/30 px-3 py-2 outline-none border-b border-white/5"
+              placeholder="Search GIFs..."
+              value={gifQuery}
+              onChange={(e) => { setGifQuery(e.target.value); searchGifs(e.target.value); }}
+            />
+            <div className="grid grid-cols-3 gap-1 p-1 max-h-[200px] overflow-y-auto">
+              {gifLoading && <div className="col-span-3 text-center text-[11px] text-white/30 py-4">Loading...</div>}
+              {gifResults.map(g => (
+                <button key={g.id} onClick={() => sendGif(g.url)} className="rounded overflow-hidden hover:ring-2 hover:ring-ghost-purple transition-all">
+                  <img src={g.preview} alt="" className="w-full h-[70px] object-cover" loading="lazy" />
+                </button>
+              ))}
+              {!gifLoading && gifResults.length === 0 && gifQuery && <div className="col-span-3 text-center text-[11px] text-white/30 py-4">No results</div>}
+            </div>
+            <div className="px-2 py-1 text-[8px] text-white/20 text-right">Powered by GIPHY</div>
+          </div>
+        )}
         <div className="flex items-center bg-white/[0.04] rounded-lg border border-white/[0.08]">
           <input
             className="flex-1 min-w-0 bg-transparent text-[14px] text-ghost-text-primary placeholder:text-ghost-text-muted pl-3 py-2.5 pr-2 outline-none"
@@ -480,9 +544,16 @@ export default function ChatPanel() {
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             placeholder="Message..."
           />
+          {/* GIF button */}
+          <button
+            onClick={() => { setShowGifs(v => { if (!v) searchGifs(''); return !v; }); setShowEmoji(false); }}
+            className={`shrink-0 w-8 h-8 flex items-center justify-center transition-colors rounded text-[11px] font-bold ${showGifs ? 'text-ghost-green' : 'text-ghost-text-muted hover:text-ghost-text-primary'}`}
+          >
+            GIF
+          </button>
           {/* Emoji button */}
           <button
-            onClick={() => setShowEmoji((v) => !v)}
+            onClick={() => { setShowEmoji((v) => !v); setShowGifs(false); }}
             className={`shrink-0 w-8 h-8 flex items-center justify-center transition-colors rounded ${showEmoji ? 'text-ghost-green' : 'text-ghost-text-muted hover:text-ghost-text-primary'}`}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">

@@ -83,7 +83,7 @@ export default memo(function FrequencyBar({ seekBarRef, progress, isPlaying, onS
   return (
     <div
       ref={seekBarRef}
-      className="w-full h-10 cursor-pointer relative group"
+      className="w-full h-7 cursor-pointer relative group"
       style={{ background: 'rgba(6,2,14,0.95)', borderTop: '1px solid rgba(255,255,255,0.06)' }}
       onMouseDown={onSeekClick}
       onMouseMove={onSeekDrag}

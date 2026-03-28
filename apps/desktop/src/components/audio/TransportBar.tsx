@@ -121,31 +121,31 @@ export default function TransportBar({ tracks, projectId, projectTempo, onTempoC
             }} className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${canRedo ? 'text-white/60 hover:text-white' : 'text-white/15 cursor-not-allowed'}`} title="Redo">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10" /></svg>
             </button>
-            <span className="text-[10px] font-mono text-white/70 ml-1">{formatTime(currentTime)}</span>
+            <span className="text-[9px] font-mono text-white/60 ml-1">{formatTime(currentTime)}</span>
           </div>
 
-          <div className="absolute flex items-center gap-3 pointer-events-auto" style={{ left: '50%', transform: 'translateX(-50%)', filter: 'drop-shadow(0 0 4px rgba(0,0,0,0.8))' }}>
-            <button onClick={() => seekTo(0)} className="w-8 h-8 flex items-center justify-center rounded-full text-white/80 hover:text-white transition-colors" title="Skip Back">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="6" width="3" height="12" rx="1" /><polygon points="20,6 11,12 20,18" /></svg>
+          <div className="absolute flex items-center gap-3 pointer-events-auto" style={{ left: '50%', transform: 'translateX(-50%) translateY(-30%)', filter: 'drop-shadow(0 0 3px rgba(0,0,0,0.8))' }}>
+            <button onClick={() => seekTo(0)} className="w-7 h-7 flex items-center justify-center rounded-full text-white/70 hover:text-white transition-colors" title="Skip Back">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="6" width="3" height="12" rx="1" /><polygon points="20,6 11,12 20,18" /></svg>
             </button>
-            <button onClick={() => seekTo(Math.max(0, currentTime - 5))} className="w-8 h-8 flex items-center justify-center rounded-full text-white/80 hover:text-white transition-colors" title="Rewind">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="11,6 2,12 11,18" /><polygon points="22,6 13,12 22,18" /></svg>
+            <button onClick={() => seekTo(Math.max(0, currentTime - 5))} className="w-7 h-7 flex items-center justify-center rounded-full text-white/70 hover:text-white transition-colors" title="Rewind">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="11,6 2,12 11,18" /><polygon points="22,6 13,12 22,18" /></svg>
             </button>
-            <button onClick={handlePlayPause} className={`w-14 h-14 rounded-full flex items-center justify-center transition-all relative z-[5] ${isPlaying ? 'text-white' : 'text-white hover:text-white'}`} style={{ background: 'linear-gradient(180deg, #9333EA 0%, #6B21A8 100%)', boxShadow: '0 0 30px rgba(147,51,234,0.5), 0 0 60px rgba(124,58,237,0.2)', isolation: 'isolate' }} title={isPlaying ? 'Pause' : 'Play'}>
+            <button onClick={handlePlayPause} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all relative z-[5] text-white`} style={{ background: 'linear-gradient(180deg, #9333EA 0%, #6B21A8 100%)', boxShadow: '0 0 20px rgba(147,51,234,0.5)', isolation: 'isolate' }} title={isPlaying ? 'Pause' : 'Play'}>
               {isPlaying ? (
-                <svg width="16" height="16" viewBox="0 0 12 14" fill="white"><rect x="0" y="0" width="4" height="14" rx="1" /><rect x="8" y="0" width="4" height="14" rx="1" /></svg>
+                <svg width="12" height="12" viewBox="0 0 12 14" fill="white"><rect x="1" y="1" width="3.5" height="12" rx="1" /><rect x="7.5" y="1" width="3.5" height="12" rx="1" /></svg>
               ) : (
-                <svg width="16" height="16" viewBox="0 0 10 12" fill="white" className="ml-0.5"><polygon points="0,0 10,6 0,12" /></svg>
+                <svg width="12" height="12" viewBox="0 0 10 12" fill="white" className="ml-0.5"><polygon points="0,0 10,6 0,12" /></svg>
               )}
             </button>
-            <button onClick={() => seekTo(Math.min(duration, currentTime + 5))} className="w-8 h-8 flex items-center justify-center rounded-full text-white/80 hover:text-white transition-colors" title="Fast Forward">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="13,6 22,12 13,18" /><polygon points="2,6 11,12 2,18" /></svg>
+            <button onClick={() => seekTo(Math.min(duration, currentTime + 5))} className="w-7 h-7 flex items-center justify-center rounded-full text-white/70 hover:text-white transition-colors" title="Fast Forward">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="13,6 22,12 13,18" /><polygon points="2,6 11,12 2,18" /></svg>
             </button>
           </div>
 
-          <div className="absolute right-3 flex items-center gap-2 pointer-events-auto" style={{ filter: 'drop-shadow(0 0 3px rgba(0,0,0,0.8))' }}>
-            <span className="text-[11px] font-mono text-white/70">{formatTime(currentTime)} / {formatTime(duration)}</span>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/60"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" /></svg>
+          <div className="absolute right-3 flex items-center gap-1.5 pointer-events-auto" style={{ filter: 'drop-shadow(0 0 3px rgba(0,0,0,0.8))' }}>
+            <span className="text-[9px] font-mono text-white/60">{formatTime(currentTime)} / {formatTime(duration)}</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/50"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" /></svg>
           </div>
         </div>
       </FrequencyBar>
