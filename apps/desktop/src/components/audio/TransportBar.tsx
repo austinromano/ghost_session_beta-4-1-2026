@@ -2,9 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import { useAudioStore } from '../../stores/audioStore';
 import { useProjectStore } from '../../stores/projectStore';
 import { audioBufferCache, cacheBuffer, detectBpmFromName, formatTime } from '../../lib/audio';
-import FrequencyBar from './FrequencyBar';
+import FrequencyBar, { type VizMode } from './FrequencyBar';
 
-export default function TransportBar({ tracks, projectId, projectTempo, onTempoChange, trackZoom, onZoomChange }: { tracks?: any[]; projectId?: string; projectTempo?: number; onTempoChange?: (bpm: number) => void; trackZoom?: 'full' | 'half'; onZoomChange?: (zoom: 'full' | 'half') => void }) {
+export default function TransportBar({ tracks, projectId, projectTempo, onTempoChange, trackZoom, onZoomChange, vizMode }: { tracks?: any[]; projectId?: string; projectTempo?: number; onTempoChange?: (bpm: number) => void; trackZoom?: 'full' | 'half'; onZoomChange?: (zoom: 'full' | 'half') => void; vizMode?: VizMode }) {
   const isPlaying = useAudioStore((s) => s.isPlaying);
   const currentTime = useAudioStore((s) => s.currentTime);
   const duration = useAudioStore((s) => s.duration);
@@ -78,7 +78,7 @@ export default function TransportBar({ tracks, projectId, projectTempo, onTempoC
 
   return (
     <div className="shrink-0 flex flex-col w-full" style={{ background: 'rgba(10,4,18,0.97)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-      <div className="h-6 w-full flex items-stretch overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="h-4 w-full flex items-stretch overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         {Array.from({ length: 16 }, (_, bar) => (
           <div key={bar} className="flex-1 flex items-start relative" style={{ borderLeft: '1px solid rgba(255,255,255,0.12)' }}>
             <span className="text-[10px] font-mono text-white/30 ml-1 mt-0.5 select-none">{bar + 1}</span>
@@ -95,6 +95,7 @@ export default function TransportBar({ tracks, projectId, projectTempo, onTempoC
         onSeekClick={handleSeekClick}
         onSeekDrag={handleSeekDrag}
         onSeekEnd={() => setDragging(false)}
+        vizMode={vizMode}
       >
         <div className="absolute inset-0 flex items-center z-10 pointer-events-none">
           <div className="absolute left-3 flex items-center gap-1 pointer-events-auto" style={{ filter: 'drop-shadow(0 0 3px rgba(0,0,0,0.8))' }}>

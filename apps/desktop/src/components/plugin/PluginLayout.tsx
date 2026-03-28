@@ -249,6 +249,9 @@ export default function PluginLayout() {
   const [videoGridHidden, setVideoGridHidden] = useState(true);
   const [shareStatus, setShareStatus] = useState('');
   const [showAllBars, setShowAllBars] = useState(false);
+  const vizModes = ['bars', 'wave', 'radial', 'ghost'] as const;
+  const [vizModeIdx, setVizModeIdx] = useState(0);
+  const vizMode = vizModes[vizModeIdx];
   const [isBeatView, setIsBeatView] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [trackZoom, setTrackZoom] = useState<'full' | 'half'>('full');
@@ -418,7 +421,7 @@ export default function PluginLayout() {
     <div className="flex h-screen w-screen overflow-hidden relative">
       {/* Presence dock — full height left edge */}
       <div className="flex flex-col items-center justify-start shrink-0 w-14 pl-2 pt-4 pb-2 z-20">
-        <motion.svg width="38" height="40" viewBox="0 0 20 22" fill="none" className="shrink-0 cursor-pointer mb-5" style={{ filter: 'drop-shadow(0 0 4px rgba(0,255,200,0.3))' }} animate={{ y: [0, -2, 0] }} transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}>
+        <motion.svg onClick={() => setVizModeIdx((i) => (i + 1) % vizModes.length)} width="38" height="40" viewBox="0 0 20 22" fill="none" className="shrink-0 cursor-pointer mb-5" title={`Visualizer: ${vizMode}`} style={{ filter: 'drop-shadow(0 0 4px rgba(0,255,200,0.3))' }} animate={{ y: [0, -2, 0] }} transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}>
           <defs><linearGradient id="ghostGradNav" x1="0" y1="0" x2="20" y2="22" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#00FFC8" /><stop offset="100%" stopColor="#7C3AED" /></linearGradient></defs>
           <path d="M10 1C5.5 1 2 4.5 2 9v8l2-2 2 2 2-2 2 2 2-2 2 2 2-2 2 2V9c0-4.5-3.5-8-8-8z" fill="rgba(0,255,200,0.08)" stroke="url(#ghostGradNav)" strokeWidth="1.5" strokeLinejoin="round" />
           <ellipse cx="7.5" cy="9.5" rx="1.6" ry="1.8" fill="url(#ghostGradNav)" opacity="0.9" /><ellipse cx="12.5" cy="9.5" rx="1.6" ry="1.8" fill="url(#ghostGradNav)" opacity="0.9" />
@@ -471,7 +474,7 @@ export default function PluginLayout() {
         </div>
       </div>
 
-      <div className="flex flex-1 min-h-0 p-2 gap-2" style={{ paddingBottom: selectedProjectId && currentProject ? '90px' : '8px' }}>
+      <div className="flex flex-1 min-h-0 p-2 gap-2" style={{ paddingBottom: selectedProjectId && currentProject ? '60px' : '8px' }}>
         {/* Sidebar */}
         <div className={`relative flex flex-col self-stretch ${sidebarCollapsed ? 'w-4 shrink-0' : 'w-[210px] shrink-0 glass glass-glow'}`}>
           <button
@@ -672,7 +675,7 @@ export default function PluginLayout() {
       {/* Transport bar — full width bottom */}
       {selectedProjectId && currentProject && (
         <div className="absolute bottom-0 left-0 right-0 z-30">
-          <TransportBar tracks={currentProject.tracks} projectId={selectedProjectId!} projectTempo={currentProject.tempo} onTempoChange={(bpm) => updateProject(selectedProjectId!, { tempo: bpm })} trackZoom={trackZoom} onZoomChange={setTrackZoom} />
+          <TransportBar tracks={currentProject.tracks} projectId={selectedProjectId!} projectTempo={currentProject.tempo} onTempoChange={(bpm) => updateProject(selectedProjectId!, { tempo: bpm })} trackZoom={trackZoom} onZoomChange={setTrackZoom} vizMode={vizMode} />
         </div>
       )}
     </div>
