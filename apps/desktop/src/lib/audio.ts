@@ -1,20 +1,51 @@
 import { api } from './api';
 import { API_BASE } from './constants';
 
-// Shared audio caches — used by Waveform, StemRow, TransportBar
-export const rawDataCache = new Map<string, Float32Array>();
+// ── Managed Audio Cache ──
+// Single source of truth for decoded audio data.
+// Max 50 entries with oldest-first eviction.
+
+const MAX_CACHE_SIZE = 50;
+const insertionOrder: string[] = []; // tracks insertion order for eviction
+
 export const audioBufferCache = new Map<string, AudioBuffer>();
+export const rawDataCache = new Map<string, Float32Array>();
 const downloadPromises = new Map<string, Promise<ArrayBuffer>>();
+
+function evictIfNeeded() {
+  while (insertionOrder.length > MAX_CACHE_SIZE) {
+    const oldest = insertionOrder.shift()!;
+    audioBufferCache.delete(oldest);
+    rawDataCache.delete(oldest);
+    downloadPromises.delete(oldest);
+  }
+}
+
+/** Store a buffer in the cache (used by loopTrackToFill, undo/redo) */
+export function cacheBuffer(fileId: string, buffer: AudioBuffer) {
+  audioBufferCache.set(fileId, buffer);
+  // Invalidate raw data so waveform re-derives from new buffer
+  rawDataCache.delete(fileId);
+  if (!insertionOrder.includes(fileId)) {
+    insertionOrder.push(fileId);
+    evictIfNeeded();
+  }
+}
+
+/** Clear all caches — call on logout or account switch */
+export function clearAudioCaches() {
+  audioBufferCache.clear();
+  rawDataCache.clear();
+  downloadPromises.clear();
+  insertionOrder.length = 0;
+}
 
 export function debugLog(msg: string) {
   fetch(`${API_BASE}/debug`, { method: 'POST', body: msg }).catch(() => {});
 }
 
 export function getAudioData(projectId: string, fileId: string): Promise<{ buffer: AudioBuffer; channelData: Float32Array }> {
-  debugLog('getAudioData called: ' + fileId);
-
   if (audioBufferCache.has(fileId)) {
-    debugLog('cache hit: ' + fileId);
     const buffer = audioBufferCache.get(fileId)!;
     const channelData = rawDataCache.get(fileId) || buffer.getChannelData(0);
     return Promise.resolve({ buffer, channelData });
@@ -22,37 +53,34 @@ export function getAudioData(projectId: string, fileId: string): Promise<{ buffe
 
   let downloadPromise = downloadPromises.get(fileId);
   if (!downloadPromise) {
-    debugLog('starting download: ' + fileId);
     downloadPromise = api.downloadFile(projectId, fileId);
     downloadPromises.set(fileId, downloadPromise);
-  } else {
-    debugLog('reusing download: ' + fileId);
   }
 
   return downloadPromise.then((buf) => {
-    debugLog('download done: ' + fileId + ' size=' + buf.byteLength);
     if (audioBufferCache.has(fileId)) {
-      debugLog('another caller already decoded: ' + fileId);
       const buffer = audioBufferCache.get(fileId)!;
       return { buffer, channelData: rawDataCache.get(fileId) || buffer.getChannelData(0) };
     }
-    debugLog('decoding: ' + fileId);
     const ctx = new AudioContext();
     return ctx.decodeAudioData(buf.slice(0)).then((decoded) => {
       ctx.close();
-      debugLog('decode SUCCESS: ' + fileId + ' duration=' + decoded.duration);
       audioBufferCache.set(fileId, decoded);
       const channelData = decoded.getChannelData(0);
       rawDataCache.set(fileId, channelData);
       downloadPromises.delete(fileId);
+      if (!insertionOrder.includes(fileId)) {
+        insertionOrder.push(fileId);
+        evictIfNeeded();
+      }
       return { buffer: decoded, channelData };
     }).catch((err) => {
       ctx.close();
-      debugLog('decode FAILED: ' + fileId + ' err=' + err.message);
+      downloadPromises.delete(fileId);
       throw err;
     });
   }).catch((err) => {
-    debugLog('getAudioData FAILED: ' + fileId + ' err=' + err.message);
+    downloadPromises.delete(fileId);
     throw err;
   });
 }

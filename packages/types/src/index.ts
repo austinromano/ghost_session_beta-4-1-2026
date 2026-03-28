@@ -5,3 +5,4 @@ export * from './version';
 export * from './comment';
 export * from './session';
 export * from './api';
+export * from './shared';

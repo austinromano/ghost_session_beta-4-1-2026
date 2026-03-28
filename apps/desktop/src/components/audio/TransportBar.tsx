@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAudioStore } from '../../stores/audioStore';
 import { useProjectStore } from '../../stores/projectStore';
-import { audioBufferCache, rawDataCache, detectBpmFromName, formatTime } from '../../lib/audio';
+import { audioBufferCache, cacheBuffer, detectBpmFromName, formatTime } from '../../lib/audio';
 import FrequencyBar from './FrequencyBar';
 
 export default function TransportBar({ tracks, projectId, projectTempo, onTempoChange, trackZoom, onZoomChange }: { tracks?: any[]; projectId?: string; projectTempo?: number; onTempoChange?: (bpm: number) => void; trackZoom?: 'full' | 'half'; onZoomChange?: (zoom: 'full' | 'half') => void }) {
@@ -104,7 +104,7 @@ export default function TransportBar({ tracks, projectId, projectTempo, onTempoC
               state.undo();
               state.loadedTracks.forEach((t, id) => {
                 const fileId = currentProject?.tracks?.find((tr: any) => tr.id === id)?.fileId;
-                if (fileId) { audioBufferCache.set(fileId, t.buffer); rawDataCache.delete(fileId); }
+                if (fileId) { cacheBuffer(fileId, t.buffer); }
               });
             }} className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${canUndo ? 'text-white/60 hover:text-white' : 'text-white/15 cursor-not-allowed'}`} title="Undo">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
@@ -115,7 +115,7 @@ export default function TransportBar({ tracks, projectId, projectTempo, onTempoC
               state.redo();
               state.loadedTracks.forEach((t, id) => {
                 const fileId = currentProject?.tracks?.find((tr: any) => tr.id === id)?.fileId;
-                if (fileId) { audioBufferCache.set(fileId, t.buffer); rawDataCache.delete(fileId); }
+                if (fileId) { cacheBuffer(fileId, t.buffer); }
               });
             }} className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${canRedo ? 'text-white/60 hover:text-white' : 'text-white/15 cursor-not-allowed'}`} title="Redo">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10" /></svg>

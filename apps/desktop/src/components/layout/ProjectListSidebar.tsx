@@ -1,12 +1,8 @@
 import { useState } from 'react';
 import { Reorder } from 'framer-motion';
+import type { SamplePack } from '@ghost/types';
 
-export interface SamplePack {
-  id: string;
-  name: string;
-  samples: { id: string; name: string; fileId?: string }[];
-  updatedAt?: string;
-}
+export type { SamplePack };
 
 function ProjectListSidebar({
   projects,

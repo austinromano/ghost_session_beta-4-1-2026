@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, memo } from 'react';
 import { motion } from 'framer-motion';
 import { useAudioStore } from '../../stores/audioStore';
 import { api } from '../../lib/api';
-import { audioBufferCache, rawDataCache, formatDate } from '../../lib/audio';
+import { audioBufferCache, cacheBuffer, formatDate } from '../../lib/audio';
 import Waveform from './Waveform';
 
 export default memo(function StemRow({
@@ -213,8 +213,7 @@ export default memo(function StemRow({
                 useAudioStore.getState().loopTrackToFill(trackId, fileId || undefined);
                 const track = useAudioStore.getState().loadedTracks.get(trackId);
                 if (track && fileId) {
-                  audioBufferCache.set(fileId, track.buffer);
-                  rawDataCache.delete(fileId);
+                  cacheBuffer(fileId, track.buffer);
                 }
               }}
               title="Loop to fill"

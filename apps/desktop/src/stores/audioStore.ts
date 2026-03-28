@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { api } from '../lib/api';
 import { FFT_SIZE, SMOOTHING_TIME_CONSTANT, PITCH_MIN, PITCH_MAX } from '../lib/constants';
+import { audioBufferCache, cacheBuffer, clearAudioCaches } from '../lib/audio';
 
 interface LoadedTrack {
   id: string;
@@ -67,7 +68,6 @@ export function getAnalyser(): AnalyserNode | null {
 let startedAt = 0;
 let pausedAt = 0;
 let rafId: number | null = null;
-const bufferCache = new Map<string, AudioBuffer>();
 const undoStack: UndoSnapshot[] = [];
 const redoStack: UndoSnapshot[] = [];
 let soloSource: AudioBufferSourceNode | null = null;
@@ -220,8 +220,8 @@ export const useAudioStore = create<AudioState>((set, get) => {
     loadError: null,
 
     loadTrack: async (trackId, fileId, projectId, trackBpm = 0) => {
-      if (bufferCache.has(fileId)) {
-        const cachedBuf = bufferCache.get(fileId)!;
+      if (audioBufferCache.has(fileId)) {
+        const cachedBuf = audioBufferCache.get(fileId)!;
         set((s) => {
           const m = new Map(s.loadedTracks);
           const existing = m.get(trackId);
@@ -241,7 +241,7 @@ export const useAudioStore = create<AudioState>((set, get) => {
         const tempCtx = new AudioContext();
         const buffer = await tempCtx.decodeAudioData(arrayBuffer);
         await tempCtx.close();
-        bufferCache.set(fileId, buffer);
+        cacheBuffer(fileId, buffer);
 
         set((s) => {
           const m = new Map(s.loadedTracks);
@@ -512,7 +512,10 @@ export const useAudioStore = create<AudioState>((set, get) => {
       pausedAt = 0;
       startedAt = 0;
       if (soloRafId) { cancelAnimationFrame(soloRafId); soloRafId = null; }
-      set({ isPlaying: false, currentTime: 0, loadedTracks: new Map(), duration: 0, projectBpm: 0, soloPlayingTrackId: null, soloCurrentTime: 0, soloDuration: 0 });
+      undoStack.length = 0;
+      redoStack.length = 0;
+      clearAudioCaches();
+      set({ isPlaying: false, currentTime: 0, loadedTracks: new Map(), duration: 0, projectBpm: 0, soloPlayingTrackId: null, soloCurrentTime: 0, soloDuration: 0, canUndo: false, canRedo: false });
     },
   };
 });

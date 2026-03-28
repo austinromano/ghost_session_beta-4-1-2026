@@ -1,12 +1,8 @@
 import { useState, useEffect } from 'react';
+import type { SamplePack } from '@ghost/types';
 import { api } from '../lib/api';
 
-export interface SamplePack {
-  id: string;
-  name: string;
-  samples: { id: string; name: string; fileId?: string }[];
-  updatedAt?: string;
-}
+export type { SamplePack };
 
 export function useSamplePacks() {
   const [packs, setPacks] = useState<SamplePack[]>([]);

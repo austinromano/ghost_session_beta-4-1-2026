@@ -1,20 +1,10 @@
 import { useState, useEffect } from 'react';
+import type { Invitation, AppNotification } from '@ghost/types';
 import { api } from '../lib/api';
 import { API_BASE } from '../lib/constants';
 import { useAuthStore } from '../stores/authStore';
 
-export interface Invitation {
-  id: string;
-  projectName: string;
-  inviterName: string;
-}
-
-export interface AppNotification {
-  id: string;
-  type: string;
-  message: string;
-  createdAt: string;
-}
+export type { Invitation, AppNotification };
 
 export function useNotifications() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);

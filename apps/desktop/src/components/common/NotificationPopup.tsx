@@ -1,21 +1,12 @@
-export interface Invitation {
-  id: string;
-  projectName: string;
-  inviterName: string;
-}
+import type { Invitation, AppNotification } from '@ghost/types';
 
-export interface Notification {
-  id: string;
-  type: string;
-  message: string;
-  createdAt: string;
-}
+export type { Invitation, AppNotification as Notification };
 
 export default function NotificationPopup({ invitations, onAccept, onDecline, notifications, onMarkRead }: {
   invitations: Invitation[];
   onAccept: (id: string) => void;
   onDecline: (id: string) => void;
-  notifications: Notification[];
+  notifications: AppNotification[];
   onMarkRead: () => void;
 }) {
   return (

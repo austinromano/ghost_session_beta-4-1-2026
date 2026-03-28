@@ -1,15 +1,7 @@
 import { create } from 'zustand';
-import type { PresenceInfo } from '@ghost/types';
+import type { PresenceInfo, ChatMessage } from '@ghost/types';
 import { getSocket, joinProject, leaveProject, sendChat, sendSessionAction, deleteChatMessage } from '../lib/socket';
 import { api } from '../lib/api';
-
-interface ChatMessage {
-  userId: string;
-  displayName: string;
-  colour: string;
-  text: string;
-  timestamp: number;
-}
 
 interface SessionState {
   isConnected: boolean;

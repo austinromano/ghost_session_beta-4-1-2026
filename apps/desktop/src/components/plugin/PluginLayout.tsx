@@ -10,7 +10,7 @@ import ChatPanel from '../session/ChatPanel';
 import { useSessionStore, onProjectUpdated } from '../../stores/sessionStore';
 import { useAudioStore } from '../../stores/audioStore';
 import { API_BASE } from '../../lib/constants';
-import { audioBufferCache, rawDataCache } from '../../lib/audio';
+import { audioBufferCache } from '../../lib/audio';
 
 // Hooks
 import { useNotifications } from '../../hooks/useNotifications';
