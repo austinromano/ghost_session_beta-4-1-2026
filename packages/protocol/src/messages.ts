@@ -62,6 +62,11 @@ export interface ClientToServerEvents {
     projectId: string;
     streamType?: StreamType;
   }) => void;
+  'cursor-move': (data: {
+    projectId: string;
+    x: number;
+    y: number;
+  }) => void;
 }
 
 // ── Server → Client ──────────────────────────────────────────────────
@@ -117,6 +122,13 @@ export interface ServerToClientEvents {
   'project-updated': (data: {
     projectId: string;
     reason: 'track-added' | 'track-updated' | 'track-deleted' | 'version-created' | 'metadata-updated' | 'member-changed';
+  }) => void;
+  'cursor-move': (data: {
+    userId: string;
+    displayName: string;
+    colour: string;
+    x: number;
+    y: number;
   }) => void;
   'error': (data: {
     message: string;

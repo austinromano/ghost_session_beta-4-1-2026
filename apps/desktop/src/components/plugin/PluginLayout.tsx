@@ -14,6 +14,8 @@ import { audioBufferCache } from '../../lib/audio';
 
 // Hooks
 import { useNotifications } from '../../hooks/useNotifications';
+import { useCursorTracking } from '../../hooks/useCursorTracking';
+import RemoteCursors from '../session/RemoteCursors';
 import { useSamplePacks, type SamplePack } from '../../hooks/useSamplePacks';
 
 // Extracted components
@@ -272,12 +274,15 @@ export default function PluginLayout() {
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [reverting, setReverting] = useState(false);
   const projectMenuRef = useRef<HTMLDivElement>(null);
+  const cursorContainerRef = useRef<HTMLDivElement>(null);
   const [projectName, setProjectName] = useState('');
   const projectNameTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [projectBpm, setProjectBpm] = useState('');
   const [projectKey, setProjectKey] = useState('');
   const bpmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentProjectId = useSessionStore((s) => s.currentProjectId);
+  useCursorTracking(cursorContainerRef, currentProjectId);
 
   const audioCleanup = useAudioStore((s) => s.cleanup);
   const members = currentProject?.members || [];
@@ -501,7 +506,8 @@ export default function PluginLayout() {
         </div>
 
         {/* Main content */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <div ref={cursorContainerRef} className="relative flex-1 flex flex-col min-w-0 overflow-hidden">
+          <RemoteCursors />
           {showSettings && (<><div className="fixed inset-0 z-40" onClick={() => setShowSettings(false)} /><SettingsPopup user={user} onSignOut={() => { setShowSettings(false); logout(); }} onDeleteAccount={async () => { setShowSettings(false); await useAuthStore.getState().deleteAccount(); }} onClose={() => setShowSettings(false)} onProfile={() => { setShowSocial(true); setSelectedProjectId(null); samplePackState.setSelectedPackId(null); }} /></>)}
           {showNotifs && (<><div className="fixed inset-0 z-40" onClick={() => setShowNotifs(false)} /><NotificationPopup invitations={notifs.invitations} onAccept={acceptInvite} onDecline={declineInvite} notifications={notifs.notifications} onMarkRead={notifs.markAllRead} /></>)}
           {showInvite && selectedProjectId && <InviteModal open={showInvite} onClose={() => setShowInvite(false)} projectId={selectedProjectId} />}

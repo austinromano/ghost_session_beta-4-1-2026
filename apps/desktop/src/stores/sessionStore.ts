@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PresenceInfo, ChatMessage } from '@ghost/types';
+import type { PresenceInfo, ChatMessage, CursorPosition } from '@ghost/types';
 import { getSocket, joinProject, leaveProject, sendChat, sendSessionAction, deleteChatMessage } from '../lib/socket';
 import { api } from '../lib/api';
 
@@ -7,6 +7,7 @@ interface SessionState {
   isConnected: boolean;
   onlineUsers: PresenceInfo[];
   chatMessages: ChatMessage[];
+  remoteCursors: Map<string, CursorPosition>;
   currentProjectId: string | null;
 
   join: (projectId: string) => void;
@@ -30,6 +31,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   isConnected: false,
   onlineUsers: [],
   chatMessages: [],
+  remoteCursors: new Map(),
   currentProjectId: null,
 
   join: (projectId) => {
@@ -47,6 +49,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     socket.off('chat-message');
     socket.off('delete-chat-message');
     socket.off('project-updated');
+    socket.off('cursor-move');
 
     joinProject(projectId);
     set({ currentProjectId: projectId, isConnected: true });
@@ -81,7 +84,19 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     });
 
     socket.on('user-left', ({ userId }) => {
-      set((s) => ({ onlineUsers: s.onlineUsers.filter((u) => u.userId !== userId) }));
+      set((s) => {
+        const next = new Map(s.remoteCursors);
+        next.delete(userId);
+        return { onlineUsers: s.onlineUsers.filter((u) => u.userId !== userId), remoteCursors: next };
+      });
+    });
+
+    socket.on('cursor-move', ({ userId, displayName, colour, x, y }) => {
+      set((s) => {
+        const next = new Map(s.remoteCursors);
+        next.set(userId, { userId, displayName, colour, x, y, timestamp: Date.now() });
+        return { remoteCursors: next };
+      });
     });
 
     socket.on('chat-message', (msg) => {
@@ -112,8 +127,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     socket?.off('chat-message');
     socket?.off('delete-chat-message');
     socket?.off('project-updated');
+    socket?.off('cursor-move');
 
-    set({ currentProjectId: null, isConnected: false, onlineUsers: [], chatMessages: [] });
+    set({ currentProjectId: null, isConnected: false, onlineUsers: [], chatMessages: [], remoteCursors: new Map() });
   },
 
   sendAction: (action) => {

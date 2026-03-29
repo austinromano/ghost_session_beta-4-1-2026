@@ -25,3 +25,12 @@ export interface PresenceInfo {
   isOnline: boolean;
   lastSeen: string;
 }
+
+export interface CursorPosition {
+  userId: string;
+  displayName: string;
+  colour: string;
+  x: number;
+  y: number;
+  timestamp: number;
+}

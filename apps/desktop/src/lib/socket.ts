@@ -78,3 +78,7 @@ export function sendICECandidate(projectId: string, targetUserId: string, candid
 export function sendWebRTCLeave(projectId: string, streamType?: StreamType) {
   socket?.emit('webrtc-leave', { projectId, streamType });
 }
+
+export function sendCursorMove(projectId: string, x: number, y: number) {
+  socket?.emit('cursor-move', { projectId, x, y });
+}
