@@ -102,7 +102,13 @@ export default memo(function StemRow({
     dragTriggeredRef.current = true;
     setTimeout(() => { dragTriggeredRef.current = false; }, 2000);
     const ghostUrl = `ghost://drag-to-daw?url=${encodeURIComponent(downloadUrl)}&fileName=${encodeURIComponent(name + '.wav')}`;
-    window.location.href = ghostUrl;
+    // Use a hidden iframe to trigger the ghost:// URL interception
+    // without navigating the main page (which kills the WebView)
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = ghostUrl;
+    document.body.appendChild(iframe);
+    setTimeout(() => iframe.remove(), 1000);
   };
 
   return (
