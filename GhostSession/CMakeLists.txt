@@ -5,6 +5,9 @@ project(GhostSession VERSION 2.0.0)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Universal binary (arm64 + x86_64)
+set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
+
 # Use local JUCE clone
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../JUCE JUCE)
 
@@ -20,7 +23,7 @@ juce_add_plugin(GhostSession
     PLUGIN_MANUFACTURER_CODE    GhAu
     PLUGIN_CODE                 GhSe
     FORMATS                     VST3 AU Standalone
-    PRODUCT_NAME                "Ghost Session"
+    PRODUCT_NAME                "Ghost Session Beta"
     BUNDLE_ID                   "com.ghostaudio.ghostsession"
     COPY_PLUGIN_AFTER_BUILD     TRUE
 )
@@ -70,6 +73,7 @@ target_sources(GhostSession PRIVATE
     Source/UI/TransportBar.cpp
     Source/UI/WaveformDisplay.cpp
     Source/UI/DragDropZone.cpp
+    Source/UI/GhostWebView.cpp
 
     # File Transfer
     Source/FileTransfer/FileTransferManager.cpp
@@ -110,7 +114,7 @@ target_link_libraries(GhostSession
 
 target_compile_definitions(GhostSession
     PUBLIC
-        JUCE_WEB_BROWSER=0
+        JUCE_WEB_BROWSER=1
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_DISPLAY_SPLASH_SCREEN=0
@@ -122,6 +126,7 @@ if(WIN32)
 elseif(APPLE)
     find_library(SECURITY_FRAMEWORK Security)
     find_library(COREFOUNDATION_FRAMEWORK CoreFoundation)
+    find_library(WEBKIT_FRAMEWORK WebKit)
     target_link_libraries(GhostSession PRIVATE
-        ${SECURITY_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK})
+        ${SECURITY_FRAMEWORK} ${COREFOUNDATION_FRAMEWORK} ${WEBKIT_FRAMEWORK})
 endif()

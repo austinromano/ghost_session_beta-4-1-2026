@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { PresenceInfo, ChatMessage, CursorPosition } from '@ghost/types';
 import { getSocket, joinProject, leaveProject, sendChat, sendSessionAction, deleteChatMessage } from '../lib/socket';
 import { api } from '../lib/api';
+import { useAuthStore } from './authStore';
 
 interface SessionState {
   isConnected: boolean;
@@ -19,6 +20,7 @@ interface SessionState {
 
 // Stored references so we can remove on leave
 let reconnectHandler: (() => void) | null = null;
+let chatPollTimer: ReturnType<typeof setInterval> | null = null;
 
 // Callback for project-updated events — set by PluginLayout
 let projectUpdatedCallback: ((data: { projectId: string; reason: string }) => void) | null = null;
@@ -100,7 +102,24 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     });
 
     socket.on('chat-message', (msg) => {
-      set((s) => ({ chatMessages: [...s.chatMessages, msg] }));
+      set((s) => {
+        // Deduplicate: replace optimistic local message or skip if already present
+        const isDupe = s.chatMessages.some(
+          (m) => (m.id && m.id === msg.id) ||
+                 (m.userId === msg.userId && m.text === msg.text && Math.abs(m.timestamp - msg.timestamp) < 3000)
+        );
+        if (isDupe) {
+          // Replace the optimistic message with the server-confirmed one
+          return {
+            chatMessages: s.chatMessages.map((m) =>
+              m.userId === msg.userId && m.text === msg.text && (m.id?.startsWith('local-') || Math.abs(m.timestamp - msg.timestamp) < 3000)
+                ? msg
+                : m
+            ),
+          };
+        }
+        return { chatMessages: [...s.chatMessages, msg] };
+      });
     });
 
     socket.on('delete-chat-message', ({ timestamp }) => {
@@ -110,11 +129,36 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     socket.on('project-updated', (data) => {
       if (projectUpdatedCallback) projectUpdatedCallback(data);
     });
+
+    // Polling fallback: fetch new chat messages periodically in case
+    // socket.io broadcasts are missed (e.g. inside plugin WebView)
+    if (chatPollTimer) clearInterval(chatPollTimer);
+    chatPollTimer = setInterval(() => {
+      const pid = get().currentProjectId;
+      if (!pid) return;
+      api.getChatHistory(pid).then((history) => {
+        set((s) => {
+          if (history.length <= s.chatMessages.filter((m) => !m.id?.startsWith('local-')).length) return s;
+          // Merge: keep confirmed messages from history, preserve any unsent optimistic ones
+          const optimistic = s.chatMessages.filter((m) => m.id?.startsWith('local-'));
+          const merged = [...history];
+          for (const opt of optimistic) {
+            const matched = history.some(
+              (h) => h.userId === opt.userId && h.text === opt.text && Math.abs(h.timestamp - opt.timestamp) < 5000
+            );
+            if (!matched) merged.push(opt);
+          }
+          return { chatMessages: merged };
+        });
+      }).catch(() => {});
+    }, 4000);
   },
 
   leave: () => {
     const { currentProjectId } = get();
     if (currentProjectId) leaveProject(currentProjectId);
+
+    if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
 
     const socket = getSocket();
     if (reconnectHandler) {
@@ -139,7 +183,21 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   sendMessage: (text) => {
     const { currentProjectId } = get();
-    if (currentProjectId) sendChat(currentProjectId, text);
+    if (!currentProjectId) return;
+
+    // Optimistically add own message so it appears immediately
+    const user = useAuthStore.getState().user;
+    const optimisticMsg = {
+      id: `local-${Date.now()}`,
+      userId: user?.id || '',
+      displayName: (user as any)?.displayName || (user as any)?.name || 'You',
+      colour: '#8B5CF6',
+      text,
+      timestamp: Date.now(),
+    } as ChatMessage;
+    set((s) => ({ chatMessages: [...s.chatMessages, optimisticMsg] }));
+
+    sendChat(currentProjectId, text);
   },
 
   deleteMessage: (index) => {

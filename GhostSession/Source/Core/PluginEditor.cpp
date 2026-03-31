@@ -1,164 +1,71 @@
 #include "PluginEditor.h"
 
+//==============================================================================
 GhostSessionEditor::GhostSessionEditor(GhostSessionProcessor& p)
     : AudioProcessorEditor(&p), proc(p)
 {
-    setLookAndFeel(&theme);
+    // Configure WebView — uses WKWebView on macOS, WebView2 on Windows
+    auto options = juce::WebBrowserComponent::Options()
+        .withKeepPageLoadedWhenBrowserIsHidden()
+        .withUserAgent("GhostSession/2.0 JUCE-Plugin");
 
-    // Sidebar tab switching
-    sidebar.onTabChanged = [this](Sidebar::Tab tab) {
-        dashboard.showTab(tab);
-    };
-    addAndMakeVisible(sidebar);
-    addAndMakeVisible(headerBar);
-    addAndMakeVisible(dashboard);
+#if JUCE_WINDOWS
+    options = options.withBackend(juce::WebBrowserComponent::Options::Backend::webview2);
+#endif
 
-    // Comment posting
-    dashboard.getComments().onPostComment = [this](const juce::String& body, const juce::String& parentId) {
-        if (currentSessionId.isEmpty()) return;
-        proc.getClient().postComment(currentSessionId, body, parentId,
-            [this](bool, const juce::var&) { fetchSessionData(); });
-    };
+    webView = std::make_unique<GhostWebView>(options);
+    addAndMakeVisible(*webView);
+
+    // Navigate to the React app
+    webView->goToURL(getAppUrl());
 
     setResizable(true, true);
-    setResizeLimits(800, 500, 1920, 1200);
+    setResizeLimits(900, 500, 1920, 1200);
     setSize(1100, 720);
-
-    // Auto-login then fetch data
-    autoLogin();
-
-    // Poll for updates every 5 seconds
-    startTimerHz(0); // will start after login
 }
 
 GhostSessionEditor::~GhostSessionEditor()
 {
-    stopTimer();
-    setLookAndFeel(nullptr);
+    if (webView)
+    {
+        removeChildComponent(webView.get());
+        webView->setVisible(false);
+    }
+    webView = nullptr;
 }
 
 void GhostSessionEditor::paint(juce::Graphics& g)
 {
-    g.fillAll(GhostColours::background);
+    // Dark background shown briefly while WebView loads
+    g.fillAll(juce::Colour(0xFF1A1A2E));
+
+    if (!webView || !webView->isVisible())
+    {
+        g.setColour(juce::Colour(0xFF8B5CF6));
+        g.setFont(juce::Font(18.0f));
+        g.drawText("Loading Ghost Session...",
+                   getLocalBounds(), juce::Justification::centred);
+    }
 }
 
 void GhostSessionEditor::resized()
 {
-    auto bounds = getLocalBounds();
-    sidebar.setBounds(bounds.removeFromLeft(kSidebarWidth));
-    headerBar.setBounds(bounds.removeFromTop(kHeaderHeight));
-    dashboard.setBounds(bounds);
+    if (webView)
+        webView->setBounds(getLocalBounds());
 }
 
-void GhostSessionEditor::timerCallback()
+juce::String GhostSessionEditor::getAppUrl() const
 {
-    if (currentSessionId.isNotEmpty())
-        fetchSessionData();
-}
+    // Production: point to the cloud server
+    // For local dev, change this to "http://127.0.0.1:1420" or "http://localhost:3000"
+    juce::String url = "https://ghost-session-beta-production.up.railway.app";
 
-void GhostSessionEditor::autoLogin()
-{
-    auto username = juce::SystemStats::getLogonName();
-    proc.getClient().login(username + "@ghost.local", "ghost",
-        [this](bool success, const juce::var& resp) {
-            if (!success)
-            {
-                // Try register
-                auto username = juce::SystemStats::getLogonName();
-                proc.getClient().registerUser(username + "@ghost.local", "ghost", username,
-                    [this](bool regSuccess, const juce::var& regResp) {
-                        if (regSuccess)
-                        {
-                            proc.getClient().setAuthToken(regResp["token"].toString());
-                            fetchSessionData();
-                            startTimer(5000);
-                        }
-                    });
-                return;
-            }
-            proc.getClient().setAuthToken(resp["token"].toString());
+    // Pass auth token if available so the React app can auto-login
+    auto token = proc.getClient().getAuthToken();
+    if (token.isNotEmpty())
+        url += "?token=" + juce::URL::addEscapeChars(token, true) + "&mode=plugin";
+    else
+        url += "?mode=plugin";
 
-            // Get sessions list, use first one or create one
-            proc.getClient().getSessions([this](bool ok, const juce::var& sessions) {
-                if (ok && sessions.isArray() && sessions.size() > 0)
-                {
-                    auto first = sessions[0];
-                    currentSessionId = first["id"].toString();
-                    headerBar.setSessionName(first["name"].toString());
-                    headerBar.setInviteCode(first["inviteCode"].toString());
-                    fetchSessionData();
-                    startTimer(5000);
-                }
-                else
-                {
-                    // Join demo session or create one
-                    proc.getClient().joinSession("LUNAR1",
-                        [this](bool joinOk, const juce::var& joinResp) {
-                            if (joinOk)
-                            {
-                                currentSessionId = joinResp["sessionId"].toString();
-                                headerBar.setSessionName(joinResp["name"].toString());
-                                fetchSessionData();
-                            }
-                            startTimer(5000);
-                        });
-                }
-            });
-        });
-}
-
-void GhostSessionEditor::fetchSessionData()
-{
-    if (currentSessionId.isEmpty()) return;
-
-    // Fetch comments
-    proc.getClient().getComments(currentSessionId,
-        [this](bool ok, const juce::var& data) {
-            if (!ok || !data.isArray()) return;
-            std::vector<GhostComment> comments;
-            for (int i = 0; i < data.size(); ++i)
-                comments.push_back(GhostComment::fromJson(data[i]));
-            dashboard.getComments().setComments(comments);
-        });
-
-    // Fetch versions
-    proc.getClient().getVersions(currentSessionId,
-        [this](bool ok, const juce::var& data) {
-            if (!ok || !data.isArray()) return;
-            std::vector<GhostVersion> versions;
-            for (int i = 0; i < data.size(); ++i)
-                versions.push_back(GhostVersion::fromJson(data[i]));
-            dashboard.getVersions().setVersions(versions);
-        });
-
-    // Fetch collaborators
-    proc.getClient().getCollaborators(currentSessionId,
-        [this](bool ok, const juce::var& data) {
-            if (!ok || !data.isArray()) return;
-            std::vector<GhostCollaborator> collabs;
-            for (int i = 0; i < data.size(); ++i)
-                collabs.push_back(GhostCollaborator::fromJson(data[i]));
-            dashboard.getCollaborators().setCollaborators(collabs);
-        });
-
-    // Fetch plugins
-    proc.getClient().getPlugins(currentSessionId,
-        [this](bool ok, const juce::var& data) {
-            if (!ok || !data.isArray()) return;
-            std::vector<GhostPluginInfo> plugins;
-            int editable = 0, missing = 0, rendered = 0;
-            for (int i = 0; i < data.size(); ++i)
-            {
-                auto p = GhostPluginInfo::fromJson(data[i]);
-                plugins.push_back(p);
-                switch (p.status)
-                {
-                    case GhostPluginInfo::Status::Loaded:   editable++; break;
-                    case GhostPluginInfo::Status::Missing:  missing++; break;
-                    case GhostPluginInfo::Status::Rendered: rendered++; break;
-                }
-            }
-            dashboard.getPluginStatus().setPlugins(plugins);
-            dashboard.getTrackStatus().setStatus(editable, missing, rendered);
-        });
+    return url;
 }

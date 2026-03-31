@@ -38,6 +38,7 @@ public:
     void setStateInformation(const void*, int) override {}
 
     LocalClient& getClient() { return client; }
+    const LocalClient& getClient() const { return client; }
     AppState& getAppState() { return appState; }
     SessionManager& getSessionManager() { return sessionManager; }
 

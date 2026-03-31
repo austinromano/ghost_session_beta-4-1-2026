@@ -13,6 +13,7 @@ public:
     LocalClient();
 
     void setAuthToken (const juce::String& token);
+    juce::String getAuthToken() const { return authToken; }
 
     // Auth
     void login (const juce::String& email, const juce::String& password,
