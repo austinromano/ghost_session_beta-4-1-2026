@@ -6,7 +6,7 @@ import { users, authSessions, projects, projectMembers, tracks, versions, commen
 import { eq, inArray } from 'drizzle-orm';
 import { hashPassword, verifyPassword, createSession, invalidateSession } from '../services/auth.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { isR2Configured, uploadToR2, downloadFromR2 } from '../services/storage.js';
+
 
 const auth = new Hono();
 
@@ -98,50 +98,27 @@ auth.post('/avatar', authMiddleware, async (c) => {
   const ext = file.name.split('.').pop() || 'jpg';
   const fileName = `${user.id}.${ext}`;
   const buffer = Buffer.from(await file.arrayBuffer());
+  const base64 = buffer.toString('base64');
+  const mime = file.type || 'image/jpeg';
+  const avatarUrl = `/api/v1/auth/avatars/${fileName}`;
 
-  if (isR2Configured()) {
-    const key = `avatars/${fileName}`;
-    await uploadToR2(key, buffer, file.type || 'image/jpeg');
-    const avatarUrl = `/api/v1/auth/avatars/${fileName}`;
-    await db.update(users).set({ avatarUrl }).where(eq(users.id, user.id)).run();
-    return c.json({ success: true, data: { avatarUrl } });
-  } else {
-    const { mkdir, writeFile } = await import('node:fs/promises');
-    const { resolve } = await import('node:path');
-    const AVATARS_DIR = resolve(import.meta.dirname, '../../uploads/avatars');
-    await mkdir(AVATARS_DIR, { recursive: true });
-    const filePath = resolve(AVATARS_DIR, fileName);
-    await writeFile(filePath, buffer);
-    const avatarUrl = `/api/v1/auth/avatars/${fileName}`;
-    await db.update(users).set({ avatarUrl }).where(eq(users.id, user.id)).run();
-    return c.json({ success: true, data: { avatarUrl } });
-  }
+  await db.update(users).set({ avatarUrl, avatarData: base64, avatarMime: mime }).where(eq(users.id, user.id)).run();
+
+  return c.json({ success: true, data: { avatarUrl } });
 });
 
 auth.get('/avatars/:fileName', async (c) => {
   const fileName = c.req.param('fileName');
-  const ext = fileName.split('.').pop() || 'jpg';
-  const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' };
+  // Extract user ID from filename (e.g. "uuid.jpg" -> "uuid")
+  const userId = fileName.replace(/\.[^.]+$/, '');
 
-  // Try local disk first, then R2
-  const { resolve, join } = await import('node:path');
-  const AVATARS_DIR = join(process.cwd(), 'uploads', 'avatars');
-  const filePath = resolve(AVATARS_DIR, fileName);
-  try {
-    const { readFile } = await import('node:fs/promises');
-    const data = await readFile(filePath);
-    return new Response(data, { headers: { 'Content-Type': mimeMap[ext] || 'image/jpeg', 'Cache-Control': 'public, max-age=86400' } });
-  } catch {
-    // Not on local disk, try R2
-  }
+  // Serve from Turso database
+  const results = await db.select({ avatarData: users.avatarData, avatarMime: users.avatarMime }).from(users).where(eq(users.id, userId)).limit(1).all();
+  const user = results[0];
 
-  if (isR2Configured()) {
-    try {
-      const { stream, contentType } = await downloadFromR2(`avatars/${fileName}`);
-      return new Response(stream, { headers: { 'Content-Type': contentType || mimeMap[ext] || 'image/jpeg', 'Cache-Control': 'public, max-age=86400' } });
-    } catch {
-      // Not in R2 either
-    }
+  if (user?.avatarData) {
+    const buffer = Buffer.from(user.avatarData, 'base64');
+    return new Response(buffer, { headers: { 'Content-Type': user.avatarMime || 'image/jpeg', 'Cache-Control': 'public, max-age=86400' } });
   }
 
   throw new HTTPException(404, { message: 'Avatar not found' });

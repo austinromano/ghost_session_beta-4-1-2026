@@ -182,10 +182,34 @@ export async function initDatabase() {
     `ALTER TABLE projects ADD COLUMN genre TEXT DEFAULT ''`,
     `ALTER TABLE versions ADD COLUMN snapshot_json TEXT`,
     `ALTER TABLE projects ADD COLUMN project_type TEXT DEFAULT 'project'`,
+    `ALTER TABLE users ADD COLUMN avatar_data TEXT`,
+    `ALTER TABLE users ADD COLUMN avatar_mime TEXT`,
   ];
   for (const m of migrations) {
     try { await client.execute(m); } catch {}
   }
+
+  // Migrate existing local avatar files into the database
+  try {
+    const { readFile } = await import('node:fs/promises');
+    const { join, resolve } = await import('node:path');
+    const AVATARS_DIR = join(process.cwd(), 'uploads', 'avatars');
+    const rows = await client.execute(`SELECT id, avatar_url FROM users WHERE avatar_url IS NOT NULL AND avatar_data IS NULL`);
+    for (const row of rows.rows) {
+      const avatarUrl = row.avatar_url as string;
+      const fileName = avatarUrl.split('/').pop();
+      if (!fileName) continue;
+      try {
+        const filePath = resolve(AVATARS_DIR, fileName);
+        const data = await readFile(filePath);
+        const ext = fileName.split('.').pop() || 'jpg';
+        const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' };
+        const base64 = data.toString('base64');
+        await client.execute({ sql: `UPDATE users SET avatar_data = ?, avatar_mime = ? WHERE id = ?`, args: [base64, mimeMap[ext] || 'image/jpeg', row.id as string] });
+        console.log(`  Migrated avatar for user ${row.id}`);
+      } catch {}
+    }
+  } catch {}
 
   // Performance indexes on FK columns and common query paths
   const indexes = [
