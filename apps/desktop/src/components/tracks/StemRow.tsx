@@ -95,20 +95,15 @@ export default memo(function StemRow({
 
   const handleDragStart = (e: React.DragEvent) => {
     if (!downloadUrl) return;
-    e.dataTransfer.clearData();
-    e.dataTransfer.effectAllowed = 'none';
-    e.dataTransfer.dropEffect = 'none';
+    e.preventDefault();
     if (dragTriggeredRef.current) return;
     dragTriggeredRef.current = true;
     setTimeout(() => { dragTriggeredRef.current = false; }, 2000);
     const ghostUrl = `ghost://drag-to-daw?url=${encodeURIComponent(downloadUrl)}&fileName=${encodeURIComponent(name + '.wav')}`;
-    // Use a hidden iframe to trigger the ghost:// URL interception
-    // without navigating the main page (which kills the WebView)
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = ghostUrl;
-    document.body.appendChild(iframe);
-    setTimeout(() => iframe.remove(), 1000);
+    // Navigate to ghost:// URL — JUCE's pageAboutToLoad intercepts it,
+    // cancels the navigation (page stays), downloads the file, and
+    // starts a native OS drag-and-drop into the DAW.
+    window.location.href = ghostUrl;
   };
 
   return (
@@ -123,8 +118,10 @@ export default memo(function StemRow({
         transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}
       />
     <div
-      className={`group relative flex items-center rounded-xl overflow-hidden ${compact ? 'h-[48px]' : 'h-[95px]'}`}
+      className={`group relative flex items-center rounded-xl overflow-hidden ${compact ? 'h-[48px]' : 'h-[95px]'} ${downloadUrl ? 'cursor-grab active:cursor-grabbing' : ''}`}
       style={widthPercent !== undefined && widthPercent < 100 ? { width: `${widthPercent}%` } : undefined}
+      draggable={!!downloadUrl}
+      onDragStart={handleDragStart}
     >
       <div className="flex-1 h-full overflow-hidden bg-[#0A0412] relative">
         <Waveform seed={name + type} height={compact ? 48 : 95} fileId={fileId} projectId={projectId} trackId={trackId} />
