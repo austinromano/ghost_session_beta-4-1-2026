@@ -160,7 +160,7 @@ function SamplePackContentView({
                   {[...displayMembers].sort((a: any, b: any) => (a.role === 'owner' ? -1 : b.role === 'owner' ? 1 : 0)).map((m: any) => (
                     <div key={m.userId} className="relative group cursor-pointer transition-transform hover:scale-110 hover:z-10" title={m.displayName} style={{ border: '3px solid #0F0F18', borderRadius: '50%' }}>
                       <Avatar name={m.displayName || '?'} src={m.avatarUrl} size="md" colour={m.role === 'owner' ? '#F0B232' : '#23A559'} />
-                      <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-ghost-online-green" style={{ border: '2.5px solid #0F0F18' }} />
+                      <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full" style={{ background: '#23A559', border: '2.5px solid #0F0F18' }} />
                     </div>
                   ))}
                 </div>
@@ -175,7 +175,7 @@ function SamplePackContentView({
                     ))}
                   </div>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-ghost-online-green animate-pulse" />
+                    <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#23A559' }} />
                     <span className="text-[14px] text-ghost-text-muted">{displayMembers.length} collaborator{displayMembers.length !== 1 ? 's' : ''} online</span>
                   </div>
                 </div>
@@ -580,7 +580,7 @@ export default function PluginLayout() {
                         {[...members].sort((a: any, b: any) => (a.role === 'owner' ? -1 : b.role === 'owner' ? 1 : 0)).map((m: any) => {
                           const isOnline = onlineUsers.some((u) => u.userId === m.userId);
                           return (
-                          <div key={m.userId} className="relative group cursor-pointer transition-transform hover:scale-105 hover:z-10" title={m.displayName} style={{ border: '2.5px solid #0A0A0F', borderRadius: '50%' }}><Avatar name={m.displayName || '?'} src={m.avatarUrl} size="lg" colour={m.role === 'owner' ? '#F0B232' : '#23A559'} />{isOnline && <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-ghost-online-green" style={{ border: '2.5px solid #0A0A0F' }} />}</div>
+                          <div key={m.userId} className="relative group cursor-pointer transition-transform hover:scale-105 hover:z-10" title={m.displayName} style={{ border: '2.5px solid #0A0A0F', borderRadius: '50%' }}><Avatar name={m.displayName || '?'} src={m.avatarUrl} size="lg" colour={m.role === 'owner' ? '#F0B232' : '#23A559'} />{isOnline && <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full" style={{ background: '#23A559', border: '2.5px solid #0A0A0F' }} />}</div>
                           );
                         })}
                       </div>
