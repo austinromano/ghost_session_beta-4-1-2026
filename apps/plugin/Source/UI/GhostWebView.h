@@ -17,6 +17,7 @@ public:
     GhostWebView(const Options& options, GhostSessionProcessor& processor);
 
     bool pageAboutToLoad(const juce::String& newURL) override;
+    void webMessageReceived(const juce::String& message) override;
 
 private:
     juce::File tempDir;

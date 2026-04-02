@@ -49,14 +49,12 @@ export default function RecordLane({ projectId, onRecordingUploaded }: RecordLan
       setUploadStatus(`Uploading ${fileName}...`);
 
       try {
-        // The C++ side saved the file — we need to upload it via the server
-        // Use ghost:// to trigger C++ upload, or fetch from temp
-        const ghostUrl = `ghost://upload-recording?projectId=${encodeURIComponent(projectId)}&fileName=${encodeURIComponent(fileName)}`;
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.src = ghostUrl;
-        document.body.appendChild(iframe);
-        setTimeout(() => iframe.remove(), 500);
+        // Tell C++ to upload the recording via postMessage
+        try {
+          if ((window as any).chrome?.webview?.postMessage) {
+            (window as any).chrome.webview.postMessage(`upload-recording:projectId=${encodeURIComponent(projectId)}&fileName=${encodeURIComponent(fileName)}`);
+          }
+        } catch {}
 
         setUploadStatus(`Saved: ${fileName} (${sizeKB}KB)`);
         setTimeout(() => {
@@ -225,24 +223,24 @@ export default function RecordLane({ projectId, onRecordingUploaded }: RecordLan
     return () => cancelAnimationFrame(animId);
   }, [levelL, levelR, isRecording]);
 
+  // Send command to C++ via WebView2 postMessage (native JS→C++ channel)
+  const sendToPlugin = useCallback((msg: string) => {
+    try {
+      if ((window as any).chrome?.webview?.postMessage) {
+        (window as any).chrome.webview.postMessage(msg);
+      }
+    } catch {}
+  }, []);
+
   const handleRecord = useCallback(() => {
     if (isRecording) {
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      iframe.src = 'ghost://stop-recording';
-      document.body.appendChild(iframe);
-      setTimeout(() => iframe.remove(), 500);
-      // Keep the waveform history so user can see what was recorded
+      sendToPlugin('stop-recording');
     } else {
       levelHistoryRef.current = [];
       setRecordTime(0);
-      const iframe = document.createElement('iframe');
-      iframe.style.display = 'none';
-      iframe.src = 'ghost://start-recording';
-      document.body.appendChild(iframe);
-      setTimeout(() => iframe.remove(), 500);
+      sendToPlugin('start-recording');
     }
-  }, [isRecording]);
+  }, [isRecording, sendToPlugin]);
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);

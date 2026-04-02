@@ -47,6 +47,18 @@ bool GhostWebView::pageAboutToLoad(const juce::String& newURL)
     return true;
 }
 
+void GhostWebView::webMessageReceived(const juce::String& message)
+{
+    GhostLog::write("[WebView] postMessage received: " + message);
+
+    if (message == "start-recording")
+        handleStartRecording();
+    else if (message == "stop-recording")
+        handleStopRecording();
+    else if (message.startsWith("upload-recording:"))
+        handleUploadRecording("ghost://upload-recording?" + message.fromFirstOccurrenceOf(":", false, false));
+}
+
 void GhostWebView::timerCallback()
 {
     float left  = proc.inputLevelLeft.load(std::memory_order_relaxed);
