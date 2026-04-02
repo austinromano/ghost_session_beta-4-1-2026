@@ -1,13 +1,17 @@
 #include "GhostWebView.h"
 #include "GhostLog.h"
+#include "../Core/PluginProcessor.h"
 
-GhostWebView::GhostWebView(const Options& options)
-    : WebBrowserComponent(options)
+GhostWebView::GhostWebView(const Options& options, GhostSessionProcessor& processor)
+    : WebBrowserComponent(options), proc(processor)
 {
     tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory)
                   .getChildFile("GhostSession");
     if (!tempDir.exists())
         tempDir.createDirectory();
+
+    // Push audio levels to JS at ~30fps
+    startTimerHz(30);
 }
 
 bool GhostWebView::pageAboutToLoad(const juce::String& newURL)
@@ -16,15 +20,71 @@ bool GhostWebView::pageAboutToLoad(const juce::String& newURL)
     {
         GhostLog::write("[WebView] Intercepted drag-to-daw request");
         handleDragToDaw(newURL);
-        return false; // Block the navigation
+        return false;
     }
 
-    return true; // Allow normal navigation
+    if (newURL.startsWith("ghost://start-recording"))
+    {
+        GhostLog::write("[WebView] Intercepted start-recording");
+        handleStartRecording();
+        return false;
+    }
+
+    if (newURL.startsWith("ghost://stop-recording"))
+    {
+        GhostLog::write("[WebView] Intercepted stop-recording");
+        handleStopRecording();
+        return false;
+    }
+
+    return true;
+}
+
+void GhostWebView::timerCallback()
+{
+    float left  = proc.inputLevelLeft.load(std::memory_order_relaxed);
+    float right = proc.inputLevelRight.load(std::memory_order_relaxed);
+    bool isRec  = proc.isRecording();
+
+    // Clamp to 0-1
+    left  = juce::jlimit(0.0f, 1.0f, left);
+    right = juce::jlimit(0.0f, 1.0f, right);
+
+    juce::String js = "if(window.__ghostAudioLevels__){window.__ghostAudioLevels__("
+                    + juce::String(left, 4) + ","
+                    + juce::String(right, 4) + ","
+                    + (isRec ? "true" : "false") + ");}";
+
+    executeScript(js);
+}
+
+void GhostWebView::handleStartRecording()
+{
+    proc.startRecording();
+}
+
+void GhostWebView::handleStopRecording()
+{
+    proc.stopRecording();
+
+    auto recordedFile = proc.getLastRecordedFile();
+    if (recordedFile.existsAsFile())
+    {
+        GhostLog::write("[WebView] Recording saved: " + recordedFile.getFullPathName());
+
+        // Tell the React UI the file is ready
+        auto filePath = recordedFile.getFullPathName().replace("\\", "\\\\");
+        auto fileName = recordedFile.getFileName();
+        auto sizeKB = juce::String(recordedFile.getSize() / 1024);
+
+        juce::String js = "if(window.__ghostRecordingComplete__){window.__ghostRecordingComplete__('"
+                        + fileName + "'," + sizeKB + ");}";
+        executeScript(js);
+    }
 }
 
 juce::String GhostWebView::getQueryParam(const juce::String& url, const juce::String& paramName)
 {
-    // Find ?key=value or &key=value
     auto search = paramName + "=";
     int startIdx = url.indexOf(search);
 
@@ -58,9 +118,6 @@ void GhostWebView::handleDragToDaw(const juce::String& urlString)
     {
         GhostLog::write("[WebView] Starting native drag: " + localFile.getFullPathName());
 
-        // Defer the drag to the message thread to avoid deadlock/crash
-        // when called from WebView's pageAboutToLoad callback.
-        // Use SafePointer so we don't crash if plugin is deleted before this fires.
         auto filePath = localFile.getFullPathName();
         auto safeThis = juce::Component::SafePointer<GhostWebView>(this);
 
@@ -87,7 +144,6 @@ juce::File GhostWebView::downloadToTemp(const juce::String& downloadUrl, const j
 {
     auto destFile = tempDir.getChildFile(fileName);
 
-    // If already cached, return it
     if (destFile.existsAsFile() && destFile.getSize() > 0)
     {
         GhostLog::write("[WebView] Using cached file: " + destFile.getFullPathName());

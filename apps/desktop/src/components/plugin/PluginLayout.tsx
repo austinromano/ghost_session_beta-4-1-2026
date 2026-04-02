@@ -11,6 +11,7 @@ import { useSessionStore } from '../../stores/sessionStore';
 import { useAudioStore } from '../../stores/audioStore';
 import { API_BASE } from '../../lib/constants';
 import { audioBufferCache } from '../../lib/audio';
+import RecordLane from '../tracks/RecordLane';
 
 // Hooks
 import { useNotifications } from '../../hooks/useNotifications';
@@ -220,6 +221,9 @@ function SamplePackContentView({
             </div>
           </div>
         </div>
+
+        {/* Record lane */}
+        <RecordLane projectId={pack.id} />
 
         {/* Sample rows */}
         <div className="space-y-2 mt-2">

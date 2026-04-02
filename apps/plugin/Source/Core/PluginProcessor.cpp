@@ -59,16 +59,36 @@ void GhostSessionProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     juce::ScopedNoDenormals noDenormals;
     auto totalIn  = getTotalNumInputChannels();
     auto totalOut = getTotalNumOutputChannels();
+    auto numSamples = buffer.getNumSamples();
 
     // Clear unused output channels
     for (auto i = totalIn; i < totalOut; ++i)
-        buffer.clear(i, 0, buffer.getNumSamples());
+        buffer.clear(i, 0, numSamples);
+
+    // Measure input levels (peak) for the meter
+    float peakL = 0.0f, peakR = 0.0f;
+    if (totalIn > 0) peakL = buffer.getMagnitude(0, 0, numSamples);
+    if (totalIn > 1) peakR = buffer.getMagnitude(1, 0, numSamples);
+    inputLevelLeft.store(peakL, std::memory_order_relaxed);
+    inputLevelRight.store(peakR, std::memory_order_relaxed);
+
+    // Record input audio if recording
+    if (recording.load(std::memory_order_relaxed) && totalIn > 0)
+    {
+        const juce::ScopedLock sl(recordLock);
+        auto* chL = buffer.getReadPointer(0);
+        recordBufferL.insert(recordBufferL.end(), chL, chL + numSamples);
+        if (totalIn > 1)
+        {
+            auto* chR = buffer.getReadPointer(1);
+            recordBufferR.insert(recordBufferR.end(), chR, chR + numSamples);
+        }
+    }
 
     // In plugin mode, mix transport audio into the output buffer
     if (pluginPrepared && transportSource.isPlaying())
     {
-        // Create an AudioSourceChannelInfo to read from the transport
-        juce::AudioSourceChannelInfo info(&buffer, 0, buffer.getNumSamples());
+        juce::AudioSourceChannelInfo info(&buffer, 0, numSamples);
         transportSource.getNextAudioBlock(info);
     }
 }
@@ -168,6 +188,61 @@ double GhostSessionProcessor::getPlaybackPosition() const
 double GhostSessionProcessor::getPlaybackLengthSeconds() const
 {
     return transportSource.getLengthInSeconds();
+}
+
+void GhostSessionProcessor::startRecording()
+{
+    {
+        const juce::ScopedLock sl(recordLock);
+        recordBufferL.clear();
+        recordBufferR.clear();
+        recordSampleRate = pluginPrepared ? hostSampleRate : 44100.0;
+    }
+    recording.store(true, std::memory_order_relaxed);
+    GhostLog::write("[Recorder] Recording started at SR=" + juce::String(recordSampleRate));
+}
+
+void GhostSessionProcessor::stopRecording()
+{
+    recording.store(false, std::memory_order_relaxed);
+    GhostLog::write("[Recorder] Recording stopped, samples=" + juce::String((int)recordBufferL.size()));
+
+    const juce::ScopedLock sl(recordLock);
+    if (recordBufferL.empty()) return;
+
+    // Write to WAV in temp directory
+    auto tempDir = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                       .getChildFile("GhostSession");
+    if (!tempDir.exists()) tempDir.createDirectory();
+
+    auto timestamp = juce::Time::getCurrentTime().formatted("%Y%m%d_%H%M%S");
+    auto destFile = tempDir.getChildFile("recording_" + timestamp + ".wav");
+
+    int numChannels = recordBufferR.empty() ? 1 : 2;
+    int numSamples = (int)recordBufferL.size();
+
+    juce::WavAudioFormat wavFormat;
+    std::unique_ptr<juce::AudioFormatWriter> writer(
+        wavFormat.createWriterFor(new juce::FileOutputStream(destFile),
+                                   recordSampleRate, (unsigned int)numChannels, 24, {}, 0));
+
+    if (writer != nullptr)
+    {
+        juce::AudioBuffer<float> outBuffer(numChannels, numSamples);
+        outBuffer.copyFrom(0, 0, recordBufferL.data(), numSamples);
+        if (numChannels == 2)
+            outBuffer.copyFrom(1, 0, recordBufferR.data(), numSamples);
+
+        writer->writeFromAudioSampleBuffer(outBuffer, 0, numSamples);
+        writer.reset(); // flush & close
+
+        lastRecordedFile = destFile;
+        GhostLog::write("[Recorder] Saved: " + destFile.getFullPathName()
+                        + " (" + juce::String(destFile.getSize()) + " bytes)");
+    }
+
+    recordBufferL.clear();
+    recordBufferR.clear();
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

@@ -48,7 +48,22 @@ public:
     double getPlaybackPosition() const;
     double getPlaybackLengthSeconds() const;
 
+    // Audio level metering (lock-free, read from any thread)
+    std::atomic<float> inputLevelLeft  { 0.0f };
+    std::atomic<float> inputLevelRight { 0.0f };
+
+    // Recording
+    void startRecording();
+    void stopRecording();
+    bool isRecording() const { return recording.load(); }
+    juce::File getLastRecordedFile() const { return lastRecordedFile; }
+
 private:
+    std::atomic<bool> recording { false };
+    juce::CriticalSection recordLock;
+    std::vector<float> recordBufferL, recordBufferR;
+    double recordSampleRate = 44100.0;
+    juce::File lastRecordedFile;
     AppState appState;
     LocalClient client;
     WebSocketConnection webSocket { appState };
