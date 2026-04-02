@@ -37,6 +37,13 @@ bool GhostWebView::pageAboutToLoad(const juce::String& newURL)
         return false;
     }
 
+    if (newURL.startsWith("ghost://upload-recording"))
+    {
+        GhostLog::write("[WebView] Intercepted upload-recording");
+        handleUploadRecording(newURL);
+        return false;
+    }
+
     return true;
 }
 
@@ -81,6 +88,52 @@ void GhostWebView::handleStopRecording()
                         + fileName + "'," + sizeKB + ");}";
         executeScript(js);
     }
+}
+
+void GhostWebView::handleUploadRecording(const juce::String& urlString)
+{
+    auto projectIdParam = getQueryParam(urlString, "projectId");
+    auto fileNameParam = getQueryParam(urlString, "fileName");
+
+    auto recordedFile = proc.getLastRecordedFile();
+    if (!recordedFile.existsAsFile())
+    {
+        GhostLog::write("[WebView] No recorded file to upload");
+        return;
+    }
+
+    GhostLog::write("[WebView] Uploading recording: " + recordedFile.getFullPathName()
+                    + " to project: " + projectIdParam);
+
+    juce::var metadata(new juce::DynamicObject());
+    metadata.getDynamicObject()->setProperty("projectId", projectIdParam);
+
+    auto safeThis = juce::Component::SafePointer<GhostWebView>(this);
+
+    proc.getSessionManager().getApiClient().uploadFile(
+        recordedFile, metadata,
+        [](float progress) { /* could push progress to JS */ },
+        [safeThis, fileNameParam](const ApiClient::Response& res)
+        {
+            juce::MessageManager::callAsync([safeThis, res, fileNameParam]()
+            {
+                if (safeThis == nullptr) return;
+
+                if (res.isSuccess())
+                {
+                    auto fileId = res.body.getProperty("fileId", "").toString();
+                    GhostLog::write("[WebView] Upload complete, fileId: " + fileId);
+
+                    juce::String js = "if(window.__ghostUploadComplete__){window.__ghostUploadComplete__('"
+                                    + fileId + "','" + fileNameParam + "');}";
+                    safeThis->executeScript(js);
+                }
+                else
+                {
+                    GhostLog::write("[WebView] Upload failed: " + res.error);
+                }
+            });
+        });
 }
 
 juce::String GhostWebView::getQueryParam(const juce::String& url, const juce::String& paramName)

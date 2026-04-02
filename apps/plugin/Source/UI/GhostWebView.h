@@ -27,6 +27,7 @@ private:
     void handleDragToDaw(const juce::String& urlString);
     void handleStartRecording();
     void handleStopRecording();
+    void handleUploadRecording(const juce::String& urlString);
 
     juce::File downloadToTemp(const juce::String& downloadUrl, const juce::String& fileName);
 

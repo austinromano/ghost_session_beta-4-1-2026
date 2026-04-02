@@ -32,6 +32,8 @@ public:
                    ApiClient& api);
     ~SessionManager() override;
 
+    ApiClient& getApiClient() { return apiClient; }
+
     //==============================================================================
     // Session lifecycle
 
