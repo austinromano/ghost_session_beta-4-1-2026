@@ -164,6 +164,9 @@ export default function TransportBar({ tracks, projectId, projectTempo, onTempoC
                 <svg width="12" height="12" viewBox="0 0 10 12" fill="white" className="ml-0.5"><polygon points="0,0 10,6 0,12" /></svg>
               )}
             </button>
+            <button onClick={() => { if (isPlaying) pause(); if (isRecording) sendToPlugin('stop-recording'); seekTo(0); }} className="w-8 h-8 rounded-full flex items-center justify-center transition-all relative z-[5] text-white" style={{ background: 'linear-gradient(180deg, #4B5563 0%, #1F2937 100%)', boxShadow: '0 0 8px rgba(0,0,0,0.4)' }} title="Stop">
+              <div className="w-3 h-3 rounded-sm bg-white" />
+            </button>
             <button onClick={() => seekTo(Math.min(duration, currentTime + 5))} className="w-7 h-7 flex items-center justify-center rounded-full text-white/70 hover:text-white transition-colors" title="Fast Forward">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="13,6 22,12 13,18" /><polygon points="2,6 11,12 2,18" /></svg>
             </button>
