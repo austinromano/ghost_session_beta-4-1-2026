@@ -618,6 +618,9 @@ export default function PluginLayout() {
                         {showAllBars ? '16 Bars' : 'Full View'}
                       </button>
                     </div>
+                    {/* Record lane */}
+                    <RecordLane projectId={selectedProjectId!} />
+
                     <ArrangementDropZone projectId={selectedProjectId!} onFilesAdded={() => fetchProject(selectedProjectId!)}>
                       <ArrangementScrollView showAll={showAllBars}>
                       <BarRuler />
