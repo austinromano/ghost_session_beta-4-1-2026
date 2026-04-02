@@ -40,5 +40,5 @@ apps/plugin/webview2_sdk/
 apps/electron/dist/
 apps/electron/node_modules/
 
-# Server public (built frontend, generated at deploy time)
-apps/server/public/
+# Server uploads only (public/ must be committed for Railway deploys)
+
