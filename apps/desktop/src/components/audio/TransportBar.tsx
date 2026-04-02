@@ -1,10 +1,29 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useAudioStore } from '../../stores/audioStore';
 import { useProjectStore } from '../../stores/projectStore';
 import { audioBufferCache, cacheBuffer, detectBpmFromName, formatTime } from '../../lib/audio';
 import FrequencyBar, { type VizMode } from './FrequencyBar';
 
 export default function TransportBar({ tracks, projectId, projectTempo, onTempoChange, trackZoom, onZoomChange, vizMode }: { tracks?: any[]; projectId?: string; projectTempo?: number; onTempoChange?: (bpm: number) => void; trackZoom?: 'full' | 'half'; onZoomChange?: (zoom: 'full' | 'half') => void; vizMode?: VizMode }) {
+  const [isRecording, setIsRecording] = useState(false);
+
+  // Listen for recording state from C++ level callback
+  useEffect(() => {
+    const origCb = (window as any).__ghostAudioLevels__;
+    (window as any).__ghostAudioLevels__ = (left: number, right: number, recording: boolean) => {
+      setIsRecording(recording);
+      if (origCb) origCb(left, right, recording);
+    };
+    return () => { (window as any).__ghostAudioLevels__ = origCb; };
+  }, []);
+
+  const sendToPlugin = useCallback((msg: string) => {
+    try { (window as any).chrome?.webview?.postMessage?.(msg); } catch {}
+  }, []);
+
+  const handleRecord = useCallback(() => {
+    sendToPlugin(isRecording ? 'stop-recording' : 'start-recording');
+  }, [isRecording, sendToPlugin]);
   const isPlaying = useAudioStore((s) => s.isPlaying);
   const currentTime = useAudioStore((s) => s.currentTime);
   const duration = useAudioStore((s) => s.duration);
@@ -130,6 +149,13 @@ export default function TransportBar({ tracks, projectId, projectTempo, onTempoC
             </button>
             <button onClick={() => seekTo(Math.max(0, currentTime - 5))} className="w-7 h-7 flex items-center justify-center rounded-full text-white/70 hover:text-white transition-colors" title="Rewind">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="11,6 2,12 11,18" /><polygon points="22,6 13,12 22,18" /></svg>
+            </button>
+            <button onClick={handleRecord} className={`w-8 h-8 rounded-full flex items-center justify-center transition-all relative z-[5]`} style={{ background: isRecording ? 'linear-gradient(180deg, #ED4245 0%, #A12D2F 100%)' : 'linear-gradient(180deg, #DC2626 0%, #991B1B 100%)', boxShadow: isRecording ? '0 0 16px rgba(237,66,69,0.6)' : '0 0 8px rgba(0,0,0,0.3)' }} title={isRecording ? 'Stop Recording' : 'Record'}>
+              {isRecording ? (
+                <div className="w-2.5 h-2.5 rounded-sm bg-white" />
+              ) : (
+                <div className="w-3 h-3 rounded-full bg-white" />
+              )}
             </button>
             <button onClick={handlePlayPause} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all relative z-[5] text-white`} style={{ background: 'linear-gradient(180deg, #9333EA 0%, #6B21A8 100%)', boxShadow: '0 0 20px rgba(147,51,234,0.5)', isolation: 'isolate' }} title={isPlaying ? 'Pause' : 'Play'}>
               {isPlaying ? (

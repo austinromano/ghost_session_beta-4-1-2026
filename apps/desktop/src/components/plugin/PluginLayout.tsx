@@ -618,14 +618,13 @@ export default function PluginLayout() {
                         {showAllBars ? '16 Bars' : 'Full View'}
                       </button>
                     </div>
-                    {/* Record lane */}
-                    <RecordLane projectId={selectedProjectId!} />
-
                     <ArrangementDropZone projectId={selectedProjectId!} onFilesAdded={() => fetchProject(selectedProjectId!)}>
                       <ArrangementScrollView showAll={showAllBars}>
                       <BarRuler />
                       <FullMixDropZone projectId={selectedProjectId!} onFilesAdded={() => fetchProject(selectedProjectId!)} isBeat={isBeatView} compact={trackZoom === 'half'} />
                       <DraggableTrackList tracks={currentProject.tracks} selectedProjectId={selectedProjectId!} deleteTrack={deleteTrack} updateTrack={updateTrack} trackZoom={trackZoom} fetchProject={fetchProject} />
+                      {/* Record lane — below tracks, same style as StemRow */}
+                      <RecordLane projectId={selectedProjectId!} />
                       <ArrangementPlayhead />
                       </ArrangementScrollView>
                     </ArrangementDropZone>

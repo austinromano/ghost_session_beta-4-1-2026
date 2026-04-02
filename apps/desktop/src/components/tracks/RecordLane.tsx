@@ -1,71 +1,47 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { api } from '../../lib/api';
 import { useProjectStore } from '../../stores/projectStore';
 
 interface RecordLaneProps {
   projectId?: string;
-  onRecordingUploaded?: (fileId: string, fileName: string) => void;
 }
 
-export default function RecordLane({ projectId, onRecordingUploaded }: RecordLaneProps) {
+export default function RecordLane({ projectId }: RecordLaneProps) {
   const [levelL, setLevelL] = useState(0);
   const [levelR, setLevelR] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
   const [recordTime, setRecordTime] = useState(0);
-  const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
   const timerRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
   const levelHistoryRef = useRef<{ l: number; r: number }[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const wasRecordingRef = useRef(false);
   const fetchProject = useProjectStore((s) => s.fetchProject);
 
-  // Register the global callback for C++ level data
   useEffect(() => {
     (window as any).__ghostAudioLevels__ = (left: number, right: number, recording: boolean) => {
       setLevelL(left);
       setLevelR(right);
       setIsRecording(recording);
-
       if (recording) {
         levelHistoryRef.current.push({ l: left, r: right });
-      }
-
-      // Detect recording just stopped → upload
-      if (wasRecordingRef.current && !recording) {
-        wasRecordingRef.current = false;
-      }
-      if (recording) {
-        wasRecordingRef.current = true;
       }
     };
 
     (window as any).__ghostRecordingComplete__ = async (fileName: string, sizeKB: number) => {
       if (!projectId) return;
-      setUploading(true);
       setUploadStatus(`Uploading ${fileName}...`);
-
       try {
-        // Tell C++ to upload the recording via postMessage
-        try {
-          if ((window as any).chrome?.webview?.postMessage) {
-            (window as any).chrome.webview.postMessage(`upload-recording:projectId=${encodeURIComponent(projectId)}&fileName=${encodeURIComponent(fileName)}`);
-          }
-        } catch {}
-
+        if ((window as any).chrome?.webview?.postMessage) {
+          (window as any).chrome.webview.postMessage(`upload-recording:projectId=${encodeURIComponent(projectId)}&fileName=${encodeURIComponent(fileName)}`);
+        }
         setUploadStatus(`Saved: ${fileName} (${sizeKB}KB)`);
         setTimeout(() => {
           setUploadStatus('');
-          setUploading(false);
-          // Refresh project to show new track
           if (projectId) fetchProject(projectId);
         }, 2000);
-      } catch (err: any) {
+      } catch {
         setUploadStatus('Upload failed');
-        setUploading(false);
       }
     };
 
@@ -79,6 +55,7 @@ export default function RecordLane({ projectId, onRecordingUploaded }: RecordLan
   useEffect(() => {
     if (isRecording) {
       startTimeRef.current = Date.now();
+      levelHistoryRef.current = [];
       timerRef.current = window.setInterval(() => {
         setRecordTime((Date.now() - startTimeRef.current) / 1000);
       }, 50);
@@ -88,18 +65,16 @@ export default function RecordLane({ projectId, onRecordingUploaded }: RecordLan
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isRecording]);
 
-  // Draw waveform on canvas
+  // Draw waveform
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Match canvas resolution to actual display size
     const rect = canvas.getBoundingClientRect();
-    const dpr = 1;
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
+    canvas.width = rect.width;
+    canvas.height = rect.height;
 
     let animId: number;
     const draw = () => {
@@ -108,112 +83,63 @@ export default function RecordLane({ projectId, onRecordingUploaded }: RecordLan
       ctx.clearRect(0, 0, w, h);
 
       const history = levelHistoryRef.current;
-      const avg = (levelL + levelR) / 2;
 
-      if (isRecording && history.length > 0) {
-        // Pixels per sample at 30fps — auto-scroll when waveform exceeds width
-        const pixelsPerSample = 2;
+      if ((isRecording || history.length > 0) && history.length > 0) {
+        const pixelsPerSample = isRecording ? 2 : Math.max(1, w / history.length);
         const totalWidth = history.length * pixelsPerSample;
-        const offsetX = Math.max(0, totalWidth - w);
+        const offsetX = isRecording ? Math.max(0, totalWidth - w) : 0;
 
-        // Draw center line
-        ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+        // Center line
+        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(0, h / 2);
         ctx.lineTo(w, h / 2);
         ctx.stroke();
 
-        // Draw waveform bars
+        // Waveform
         for (let i = 0; i < history.length; i++) {
           const x = i * pixelsPerSample - offsetX;
           if (x < -pixelsPerSample || x > w) continue;
-
           const sample = history[i];
           const ampL = sample.l * h * 0.45;
           const ampR = sample.r * h * 0.45;
 
-          // Top half = left channel (cyan-purple gradient)
+          // Top = left channel
           const gradTop = ctx.createLinearGradient(x, h / 2 - ampL, x, h / 2);
-          gradTop.addColorStop(0, 'rgba(0, 255, 200, 0.9)');
-          gradTop.addColorStop(1, 'rgba(124, 58, 237, 0.7)');
+          gradTop.addColorStop(0, 'rgba(0, 255, 200, 0.8)');
+          gradTop.addColorStop(1, 'rgba(124, 58, 237, 0.6)');
           ctx.fillStyle = gradTop;
-          ctx.fillRect(x, h / 2 - ampL, pixelsPerSample - 1, ampL);
-
-          // Bottom half = right channel
-          const gradBot = ctx.createLinearGradient(x, h / 2, x, h / 2 + ampR);
-          gradBot.addColorStop(0, 'rgba(124, 58, 237, 0.7)');
-          gradBot.addColorStop(1, 'rgba(0, 255, 200, 0.9)');
-          ctx.fillStyle = gradBot;
-          ctx.fillRect(x, h / 2, pixelsPerSample - 1, ampR);
-        }
-
-        // Playhead — white line at current position
-        const playheadX = Math.min(totalWidth - offsetX, w);
-        ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = 2;
-        ctx.shadowColor = 'rgba(255,255,255,0.5)';
-        ctx.shadowBlur = 6;
-        ctx.beginPath();
-        ctx.moveTo(playheadX, 0);
-        ctx.lineTo(playheadX, h);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-
-        // Glow triangle at top of playhead
-        ctx.fillStyle = '#FFFFFF';
-        ctx.beginPath();
-        ctx.moveTo(playheadX - 4, 0);
-        ctx.lineTo(playheadX + 4, 0);
-        ctx.lineTo(playheadX, 6);
-        ctx.closePath();
-        ctx.fill();
-
-      } else if (!isRecording && history.length > 0) {
-        // Show the finished recording waveform (static)
-        const pixelsPerSample = Math.max(1, w / history.length);
-
-        ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(0, h / 2);
-        ctx.lineTo(w, h / 2);
-        ctx.stroke();
-
-        for (let i = 0; i < history.length; i++) {
-          const x = i * pixelsPerSample;
-          if (x > w) break;
-          const sample = history[i];
-          const ampL = sample.l * h * 0.45;
-          const ampR = sample.r * h * 0.45;
-
-          ctx.fillStyle = 'rgba(124, 58, 237, 0.6)';
           ctx.fillRect(x, h / 2 - ampL, Math.max(1, pixelsPerSample - 1), ampL);
+
+          // Bottom = right channel
+          const gradBot = ctx.createLinearGradient(x, h / 2, x, h / 2 + ampR);
+          gradBot.addColorStop(0, 'rgba(124, 58, 237, 0.6)');
+          gradBot.addColorStop(1, 'rgba(0, 255, 200, 0.8)');
+          ctx.fillStyle = gradBot;
           ctx.fillRect(x, h / 2, Math.max(1, pixelsPerSample - 1), ampR);
         }
-      } else {
-        // No recording — show live input visualization
-        ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(0, h / 2);
-        ctx.lineTo(w, h / 2);
-        ctx.stroke();
 
-        if (avg > 0.005) {
-          const barCount = 80;
-          const barWidth = w / barCount;
-          for (let i = 0; i < barCount; i++) {
-            const dist = Math.abs(i - barCount / 2) / (barCount / 2);
-            const amplitude = avg * (1 - dist * 0.5) * (0.7 + Math.random() * 0.6);
-            const barH = amplitude * h * 0.8;
-            const gradient = ctx.createLinearGradient(0, (h - barH) / 2, 0, (h + barH) / 2);
-            gradient.addColorStop(0, 'rgba(0, 255, 200, 0.5)');
-            gradient.addColorStop(0.5, 'rgba(124, 58, 237, 0.7)');
-            gradient.addColorStop(1, 'rgba(0, 255, 200, 0.5)');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(i * barWidth + 1, (h - barH) / 2, barWidth - 2, barH);
-          }
+        // Playhead
+        if (isRecording) {
+          const px = Math.min(totalWidth - offsetX, w);
+          ctx.strokeStyle = '#FFFFFF';
+          ctx.lineWidth = 2;
+          ctx.shadowColor = 'rgba(255,255,255,0.5)';
+          ctx.shadowBlur = 6;
+          ctx.beginPath();
+          ctx.moveTo(px, 0);
+          ctx.lineTo(px, h);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+
+          ctx.fillStyle = '#FFFFFF';
+          ctx.beginPath();
+          ctx.moveTo(px - 4, 0);
+          ctx.lineTo(px + 4, 0);
+          ctx.lineTo(px, 6);
+          ctx.closePath();
+          ctx.fill();
         }
       }
 
@@ -223,138 +149,97 @@ export default function RecordLane({ projectId, onRecordingUploaded }: RecordLan
     return () => cancelAnimationFrame(animId);
   }, [levelL, levelR, isRecording]);
 
-  // Send command to C++ via WebView2 postMessage (native JS→C++ channel)
-  const sendToPlugin = useCallback((msg: string) => {
-    try {
-      if ((window as any).chrome?.webview?.postMessage) {
-        (window as any).chrome.webview.postMessage(msg);
-      }
-    } catch {}
-  }, []);
-
-  const handleRecord = useCallback(() => {
-    if (isRecording) {
-      sendToPlugin('stop-recording');
-    } else {
-      levelHistoryRef.current = [];
-      setRecordTime(0);
-      sendToPlugin('start-recording');
-    }
-  }, [isRecording, sendToPlugin]);
-
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
-    const ms = Math.floor((s % 1) * 10);
-    return `${m}:${sec.toString().padStart(2, '0')}.${ms}`;
+    return `${m}:${sec.toString().padStart(2, '0')}`;
   };
 
-  const meterPercent = (v: number) => Math.min(100, Math.round(v * 100));
-
   const hasSignal = levelL > 0.005 || levelR > 0.005;
-  const hasRecordedData = levelHistoryRef.current.length > 0;
+  const hasData = levelHistoryRef.current.length > 0;
+  const meterPct = (v: number) => Math.min(100, Math.round(v * 100));
+
+  // Only show when there's signal, recording, or recorded data
+  if (!isRecording && !hasSignal && !hasData) return null;
 
   return (
-    <div className="rounded-xl overflow-hidden mt-2 border border-ghost-border/20" ref={containerRef}>
-      {/* Header bar */}
-      <div className="flex items-center gap-3 px-4 py-2 bg-ghost-surface/60">
-        {/* Record button */}
-        <motion.button
-          onClick={handleRecord}
-          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-            isRecording
-              ? 'shadow-[0_0_24px_rgba(237,66,69,0.6),0_2px_8px_rgba(0,0,0,0.3)]'
-              : 'shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(237,66,69,0.4)]'
-          }`}
-          style={{ background: isRecording ? 'linear-gradient(180deg, #ED4245 0%, #A12D2F 100%)' : 'linear-gradient(180deg, #DC2626 0%, #991B1B 100%)' }}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-        >
-          {isRecording ? (
-            <div className="w-3.5 h-3.5 rounded-sm bg-white" />
-          ) : (
-            <div className="w-4 h-4 rounded-full bg-white" />
+    <div className="relative rounded-xl overflow-visible mt-2">
+      {/* Rainbow border glow — matches StemRow */}
+      <motion.div
+        className="absolute -inset-px rounded-xl opacity-40 pointer-events-none"
+        style={{
+          background: isRecording
+            ? 'linear-gradient(90deg, #ED4245, #F59E0B, #ED4245, #F59E0B, #ED4245)'
+            : 'linear-gradient(90deg, #00FFC8, #7C3AED, #EC4899, #F59E0B, #00B4D8, #00FFC8)',
+          backgroundSize: '200% 100%',
+        }}
+        animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
+        transition={{ duration: isRecording ? 2 : 6, repeat: Infinity, ease: 'linear' }}
+      />
+      <div className="group relative flex items-center rounded-xl overflow-hidden h-[95px]">
+        <div className="flex-1 h-full overflow-hidden bg-[#0A0412] relative">
+          {/* Waveform canvas */}
+          <canvas ref={canvasRef} className="w-full h-full" style={{ display: 'block' }} />
+
+          {/* Left gradient overlay for text readability — matches StemRow */}
+          <div className="absolute inset-y-0 left-0 w-[45%] pointer-events-none" style={{ background: 'linear-gradient(90deg, rgba(10,4,18,0.85) 0%, rgba(10,4,18,0.4) 60%, transparent 100%)' }} />
+
+          {/* Track info — top left */}
+          <div className="absolute left-4 top-2 z-10">
+            <p className="text-[13px] font-bold text-white truncate">
+              {isRecording ? 'Recording...' : hasData ? 'Recorded Audio' : 'Record Armed'}
+            </p>
+            <p className="text-[10px] text-white/40 uppercase font-medium mt-0.5">
+              {isRecording ? 'REC' : 'STEM'}
+            </p>
+          </div>
+
+          {/* Timestamp — bottom left */}
+          {(isRecording || hasData) && (
+            <div className="absolute left-4 bottom-2 z-10">
+              <p className="text-[11px] text-ghost-green font-medium">
+                {isRecording ? formatTime(recordTime) : formatTime(levelHistoryRef.current.length / 30)}
+              </p>
+            </div>
           )}
-        </motion.button>
 
-        <div className="flex flex-col">
-          <span className="text-[12px] font-bold text-white uppercase tracking-wide">
-            {isRecording ? 'Recording' : uploading ? 'Uploading...' : 'Record'}
-          </span>
-          <span className="text-[10px] text-ghost-text-muted/60">
-            {isRecording ? formatTime(recordTime) : hasRecordedData && !isRecording ? 'Recording complete' : 'Waiting for input'}
-          </span>
-        </div>
-
-        {isRecording && (
-          <motion.span
-            className="flex items-center gap-1.5 ml-2"
-            animate={{ opacity: [1, 0.3, 1] }}
-            transition={{ duration: 1, repeat: Infinity }}
-          >
-            <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
-            <span className="text-[11px] text-red-400 font-bold uppercase">REC</span>
-          </motion.span>
-        )}
-
-        {uploadStatus && (
-          <span className="text-[11px] text-ghost-green ml-2 font-medium">{uploadStatus}</span>
-        )}
-
-        <div className="flex-1" />
-
-        {/* Timecode */}
-        {isRecording && (
-          <span className="text-[16px] font-mono text-white/80 tabular-nums mr-3">
-            {formatTime(recordTime)}
-          </span>
-        )}
-
-        {/* Level meters - vertical style */}
-        <div className="flex items-end gap-1 h-7">
-          <div className="flex flex-col items-center gap-0.5">
-            <div className="w-3 h-6 rounded-sm bg-black/50 overflow-hidden flex flex-col-reverse">
-              <div
-                className="w-full rounded-sm transition-all duration-75"
-                style={{
-                  height: `${meterPercent(levelL)}%`,
-                  background: levelL > 0.85 ? '#ED4245' : levelL > 0.5 ? '#F0B232' : '#23A559',
-                }}
-              />
+          {/* REC indicator — top right */}
+          {isRecording && (
+            <div className="absolute top-2 right-3 z-10">
+              <motion.span
+                className="flex items-center gap-1.5"
+                animate={{ opacity: [1, 0.3, 1] }}
+                transition={{ duration: 1, repeat: Infinity }}
+              >
+                <span className="w-2 h-2 rounded-full bg-red-500" />
+                <span className="text-[10px] text-red-400 font-bold uppercase">REC</span>
+              </motion.span>
             </div>
-            <span className="text-[7px] text-ghost-text-muted/50">L</span>
-          </div>
-          <div className="flex flex-col items-center gap-0.5">
-            <div className="w-3 h-6 rounded-sm bg-black/50 overflow-hidden flex flex-col-reverse">
-              <div
-                className="w-full rounded-sm transition-all duration-75"
-                style={{
-                  height: `${meterPercent(levelR)}%`,
-                  background: levelR > 0.85 ? '#ED4245' : levelR > 0.5 ? '#F0B232' : '#23A559',
-                }}
-              />
+          )}
+
+          {/* Level meters — right side */}
+          <div className="absolute top-1/2 -translate-y-1/2 right-3 z-10 flex items-center gap-1">
+            <div className="flex flex-col items-center gap-0.5">
+              <div className="w-2.5 h-12 rounded-sm bg-black/50 overflow-hidden flex flex-col-reverse">
+                <div className="w-full rounded-sm transition-all duration-75" style={{ height: `${meterPct(levelL)}%`, background: levelL > 0.85 ? '#ED4245' : levelL > 0.5 ? '#F0B232' : '#23A559' }} />
+              </div>
+              <span className="text-[7px] text-white/30">L</span>
             </div>
-            <span className="text-[7px] text-ghost-text-muted/50">R</span>
+            <div className="flex flex-col items-center gap-0.5">
+              <div className="w-2.5 h-12 rounded-sm bg-black/50 overflow-hidden flex flex-col-reverse">
+                <div className="w-full rounded-sm transition-all duration-75" style={{ height: `${meterPct(levelR)}%`, background: levelR > 0.85 ? '#ED4245' : levelR > 0.5 ? '#F0B232' : '#23A559' }} />
+              </div>
+              <span className="text-[7px] text-white/30">R</span>
+            </div>
           </div>
+
+          {/* Upload status */}
+          {uploadStatus && (
+            <div className="absolute bottom-2 right-3 z-10">
+              <span className="text-[10px] text-ghost-green font-medium">{uploadStatus}</span>
+            </div>
+          )}
         </div>
-      </div>
-
-      {/* Waveform area — DAW-style */}
-      <div className={`relative bg-[#080214] overflow-hidden transition-all ${isRecording ? 'h-[95px]' : hasRecordedData ? 'h-[95px]' : 'h-[60px]'}`}>
-        <canvas
-          ref={canvasRef}
-          className="w-full h-full"
-          style={{ display: 'block' }}
-        />
-
-        {/* Empty state */}
-        {!isRecording && !hasSignal && !hasRecordedData && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <span className="text-[12px] text-ghost-text-muted/30 font-medium">
-              Route audio to this track to see levels
-            </span>
-          </div>
-        )}
       </div>
     </div>
   );
